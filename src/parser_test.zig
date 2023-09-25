@@ -7,23 +7,23 @@ const TokenType = token.TokenType;
 const testing = std.testing;
 
 test "Parser Error" {
-    const input = "let = 5;\nlet y = 10;\nlet foobar = 838383;\n";
-
+    const input =
+        \\let x = 5;
+        \\let y = 10;
+        \\let foobar = 838383;
+    ;
     var l = Lexer.init(input);
 
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     var allocator = std.heap.ArenaAllocator.init(gpa.allocator());
     var p = Parser.init(l, allocator.allocator());
-    defer p.deinit();
+    defer allocator.deinit();
 
-    const program = p.parseProgram();
-    defer program.deinit();
-
-    try testing.expect(p.errors.items.len > 0);
+    try testing.expectEqual(p.errors.items.len, 0);
 }
 
-test "Parse: Let Statements" {
-    const input = "let x = 5;\nlet y = 10;\nlet foobar = 838383;\n";
+test "ParseLetStatements" {
+    const input = "let x = 5;\nlet y = 10;\nlet foobar = 838383;";
 
     var l = Lexer.init(input);
 
@@ -34,23 +34,21 @@ test "Parse: Let Statements" {
 
     const program = p.parseProgram();
     defer program.deinit();
-
-    // try testing.expect(program.statements.items.len == 3);
-    try testing.expectEqual(program.statements.items.len, 3);
 
     const tests = [_][]const u8{
         "x",
         "y",
         "foobar",
     };
-    _ = tests;
 
-    // for (tests, 0..) |tc, i| {
-    //     var node = program.statements.items[i];
-    //     try testing.expectEqual(@TypeOf(node.statement), ast.Statement);
-    //     try testing.expect(node.statement.tokenType() == .LET);
-    //     try testing.expectEqualStrings(tc, node.statement.letStatement.name.value);
-    // }
+    try testing.expectEqual(program.statements.items.len, tests.len);
+
+    for (tests, 0..) |tc, i| {
+        var node = program.statements.items[i];
+        try testing.expectEqual(@TypeOf(node.statement), ast.Statement);
+        try testing.expect(node.statement.tokenType() == .LET);
+        try testing.expectEqualStrings(tc, node.statement.letStatement.name.value);
+    }
 }
 
 test "Parse Return Statements" {
@@ -150,4 +148,41 @@ test "IdentifierExpression_2" {
     const node = program.statements.items[0];
 
     try testing.expectEqualStrings("foobar", node.statement.expressionStatement.expression.?.identifier.value);
+}
+
+test "IntegerLiteral-1" {
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    var allocator = std.heap.ArenaAllocator.init(gpa.allocator());
+    var input = "5;";
+    var lex = Lexer.init(input);
+    var par = Parser.init(lex, allocator.allocator());
+    defer allocator.deinit();
+
+    var program = par.parseProgram();
+
+    try testing.expect(program.statements.items.len == 1);
+
+    const stmt = program.statements.items[0];
+
+    try testing.expectEqual(ast.ExpressionStatement, @TypeOf(stmt.statement.expressionStatement));
+    try testing.expectEqual(ast.IntegerLiteral, @TypeOf(stmt.statement.expressionStatement.expression.?.integerLiteral));
+}
+
+test "IntegerLiteral-2" {
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    var allocator = std.heap.ArenaAllocator.init(gpa.allocator());
+    var input = "5;";
+    var lex = Lexer.init(input);
+    var par = Parser.init(lex, allocator.allocator());
+    defer allocator.deinit();
+
+    var program = par.parseProgram();
+
+    try testing.expect(1 == program.statements.items.len);
+
+    const node = program.statements.items[0];
+
+    try testing.expectEqual(@as(u64, 5), node.statement.expressionStatement.expression.?.integerLiteral.value);
+
+    try testing.expectEqualStrings("5", node.statement.expressionStatement.expression.?.integerLiteral.token.Literal);
 }
