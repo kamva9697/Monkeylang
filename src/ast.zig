@@ -57,31 +57,18 @@ pub const ReturnStatement = struct {
     pub fn toString(self: *const ReturnStatement, allocator: std.mem.Allocator) []u8 {
         if (self.returnValue) |returnValue| {
             var val = returnValue.toString(allocator);
-            const formatString = "{s} {s};";
+            const formatString = "{any} {any};";
 
-            // Remember to allocate for the sentinel
-            var buf = allocator.alloc(u8, (self.token.Literal.len + 1 + val.len + formatString.len + 1)) catch |err| {
+            const slice = std.fmt.allocPrint(allocator, formatString, .{ self.token.Literal, val }) catch |err| {
                 std.debug.panic("Error occured: {any}", .{err});
-                std.os.exit("1");
-            };
-
-            const slice = std.fmt.bufPrint(buf[0..], formatString, .{ self.token.Literal, val }) catch |err| {
-                std.debug.panic("Error occured: {any}", .{err});
-                std.os.exit(1);
             };
 
             return slice[0..];
         }
 
-        const formatSting = "{s}";
-
-        var buf = allocator.allocSentinel(u8, self.token.Literal.len + formatSting.len, 0) catch |err| {
+        const formatSting = "{any}";
+        const slice = std.fmt.allocPrint(allocator, formatSting, .{self.token.Literal}) catch |err| {
             std.debug.panic("Error occured: {any}", .{err});
-            std.os.exit("1");
-        };
-        const slice = std.fmt.bufPrint(buf[0..], formatSting, .{self.token.Literal}) catch |err| {
-            std.debug.panic("Error occured: {any}", .{err});
-            std.os.exit(1);
         };
 
         return slice[0..];
@@ -103,18 +90,9 @@ pub const LetStatement = struct {
         var val = self.value.toString(allocator);
         const formatString = "{s} {s} = {s};";
 
-        var buf = allocator.alloc(u8, (self.token.Literal.len + 1 + self.name.value.len + formatString.len + 1)) catch |err| {
+        const slice = std.fmt.allocPrint(allocator, formatString, .{ self.token.Literal, self.name.value, val[0..] }) catch |err| {
             std.debug.panic("Error occured: {any}", .{err});
-            std.os.exit("1");
         };
-
-        const slice = std.fmt.bufPrint(buf[0..], formatString, .{ self.token.Literal, self.name.value, val }) catch |err| {
-            std.debug.panic("Error occured: {any}", .{err});
-            std.os.exit(1);
-        };
-
-        // try outBuf.writer().print("{s} {s} = {s};", .{ self.token.Literal, self.name.value, val });
-        // return outBuf.toOwnedSliceSentinel(0);
         return slice[0..];
     }
 };
@@ -136,14 +114,12 @@ pub const ExpressionStatement = struct {
             slice.appendSlice(val) catch unreachable;
             return slice.toOwnedSliceSentinel(0) catch |err| {
                 std.debug.panic("An error occured: {any}", .{err});
-                std.os.exit(2);
             };
         }
 
         slice.appendSlice("") catch unreachable;
         return slice.toOwnedSliceSentinel(0) catch |err| {
             std.debug.panic("An error occured: {any}", .{err});
-            std.os.exit(2);
         };
     }
 };
@@ -151,6 +127,7 @@ pub const ExpressionStatement = struct {
 //////////// Expresions /////////////
 pub const Expression = union(enum) {
     identifier: Identifier,
+    integerLiteral: IntegerLiteral,
 
     pub fn tokenType(self: *const Expression) TokenType {
         return self.identifier.token.Type;
@@ -178,17 +155,30 @@ pub const Identifier = struct {
         return self.token.Type;
     }
     pub fn toString(self: *const Identifier, allocator: std.mem.Allocator) []u8 {
-        const formatString = "{s}";
-
-        var buf = allocator.alloc(u8, (self.value.len + 1 + formatString.len + 1)) catch |err| {
-            std.debug.panic("An error occured {any}", .{err});
+        var buf = std.fmt.allocPrint(allocator, "{s}", .{self.value}) catch |err| {
+            std.debug.panic("[IntegerLiteral-toString]: An error occured {any}", .{err});
         };
 
-        const slice = std.fmt.bufPrint(buf[0..], formatString, .{self.value}) catch |err| {
-            std.debug.panic("An error occured: {any}", .{err});
-            std.os.exit(2);
+        return buf[0..];
+    }
+};
+
+pub const IntegerLiteral = struct {
+    token: token.Token,
+    value: u32,
+
+    pub fn expressionNode(self: *const IntegerLiteral) void {
+        _ = self;
+    }
+    pub fn TokenLiteral(self: *const IntegerLiteral) []const u8 {
+        return self.token.Literal;
+    }
+
+    pub fn toString(self: *const IntegerLiteral, allocator: std.mem.Allocator) []u8 {
+        var buf = std.fmt.allocPrint(allocator, "{d}", .{self.value}) catch |err| {
+            std.debug.panic("[IntegerLiteral-toString]: An error occured {any}", .{err});
         };
-        return slice[0..];
+        return buf[0..];
     }
 };
 
@@ -203,7 +193,7 @@ pub const Program = struct {
         };
     }
 
-    pub fn tokenType(self: *Program) TokenType {
+    pub fn tokenType(self: Program) TokenType {
         if (self.statements.items.len > 0) {
             self.statements.items[0].token.tokenType();
         } else {
@@ -211,7 +201,7 @@ pub const Program = struct {
         }
     }
 
-    pub fn toString(self: *const Program, allocator: std.mem.Allocator) []u8 {
+    pub fn toString(self: Program, allocator: std.mem.Allocator) []u8 {
         var array = std.ArrayList(u8).init(allocator);
 
         for (self.statements.items) |stmt| {
@@ -219,7 +209,6 @@ pub const Program = struct {
         }
         return array.toOwnedSliceSentinel(0) catch |err| {
             std.debug.panic("An error occured: {any}", .{err});
-            std.os.exit(2);
         };
     }
 
@@ -228,7 +217,7 @@ pub const Program = struct {
     }
 };
 
-test "test toString" {
+test "toString" {
     const testing = std.testing;
 
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};

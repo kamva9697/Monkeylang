@@ -6,7 +6,8 @@ const testing = std.testing;
 const mem = std.mem;
 const debug = std.debug;
 
-// TokenTypes
+// TODO: Use tagged Union for Token instead
+// TokenId
 pub const TokenType = enum(usize) {
     // Operators
     ASSIGN,

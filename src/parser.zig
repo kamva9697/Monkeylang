@@ -41,6 +41,7 @@ pub const Parser = struct {
         p.errors = std.ArrayList([:0]const u8).init(p.gpa);
 
         p.registerPrefix(token.TokenType.IDENT, &parseIdentifier);
+        p.registerPrefix(token.TokenType.INT, &parseIntegerLiteral);
 
         p.nextToken();
         p.nextToken();
@@ -53,20 +54,22 @@ pub const Parser = struct {
         self.peekToken = self.lex.nextToken();
     }
 
-    pub fn parseProgram(self: *Parser) *ast.Program {
+    pub fn parseProgram(self: *Parser) ast.Program {
         var program = ast.Program.init(self.gpa);
 
         while (self.curToken.Type != .EOF) {
             if (self.parseStatement()) |statement| {
                 var node = ast.Node{ .statement = statement };
-                program.statements.append(node) catch unreachable;
+                program.statements.append(node) catch |err| {
+                    std.debug.panic("An Error occured: {any}", .{err});
+                };
                 self.nextToken();
             } else {
                 break;
             }
         }
 
-        return &program;
+        return program;
     }
 
     pub fn parseStatement(self: *Parser) ?ast.Statement {
@@ -105,6 +108,16 @@ pub const Parser = struct {
         var node = ast.Identifier{ .token = self.curToken, .value = self.curToken.Literal };
 
         return ast.Expression{ .identifier = node };
+    }
+
+    pub fn parseIntegerLiteral(self: *Parser) ?ast.Expression {
+        var lit = ast.IntegerLiteral{ .token = self.curToken, .value = undefined };
+
+        lit.value = std.fmt.parseInt(u32, lit.token.Literal, 10) catch |err| {
+            std.debug.panic("Error: {any} could not parse {any} as integer", .{ err, self.curToken });
+        };
+
+        return ast.Expression{ .integerLiteral = lit };
     }
 
     pub fn parseLetStatement(self: *Parser) ?ast.Statement {
