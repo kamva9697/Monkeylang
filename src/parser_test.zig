@@ -92,8 +92,8 @@ test "IdentifierExpression: Nodes" {
 
     const stmt = program.statements.items[0];
 
-    try testing.expectEqual(ast.ExpressionStatement, @TypeOf(stmt.statement.expressionStatement));
-    try testing.expectEqual(ast.Identifier, @TypeOf(stmt.statement.expressionStatement.expression.?.identifier));
+    try testing.expectEqual(ast.ExpressionStatement, @TypeOf(stmt.statement.expressionStatement.*));
+    try testing.expectEqual(ast.Identifier, @TypeOf(stmt.statement.expressionStatement.*.expression.?.identifier.*));
 }
 
 test "IdentifierExpression: token equality" {
@@ -125,7 +125,10 @@ test "Debug_ParseExpression" {
 
     const foobar: []const u8 = "foobar";
 
-    const expectedNode = ast.Expression{ .identifier = .{ .token = .{ .Type = .IDENT, .Literal = foobar[0..] }, .value = foobar[0..] } };
+    var identPtr = try allocator.allocator().create(ast.Identifier);
+    identPtr.* = ast.Identifier{ .token = .{ .Type = .IDENT, .Literal = foobar[0..] }, .value = foobar[0..] };
+
+    const expectedNode = ast.Expression{ .identifier = identPtr };
 
     const node = par.parseExpression(.LOWEST).?;
     try testing.expectEqual(@TypeOf(expectedNode), @TypeOf(node));
@@ -146,11 +149,12 @@ test "IdentifierExpression_2" {
     try testing.expect(1 == program.statements.items.len);
 
     const node = program.statements.items[0];
+    const identLiteral = node.statement.expressionStatement.*.expression.?;
 
-    try testing.expectEqualStrings("foobar", node.statement.expressionStatement.expression.?.identifier.value);
+    try testing.expectEqualStrings("foobar", identLiteral.identifier.value);
 }
 
-test "IntegerLiteral-1" {
+test "IntegerLiteral" {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     var allocator = std.heap.ArenaAllocator.init(gpa.allocator());
     var input = "5;";
@@ -164,8 +168,8 @@ test "IntegerLiteral-1" {
 
     const stmt = program.statements.items[0];
 
-    try testing.expectEqual(ast.ExpressionStatement, @TypeOf(stmt.statement.expressionStatement));
-    try testing.expectEqual(ast.IntegerLiteral, @TypeOf(stmt.statement.expressionStatement.expression.?.integerLiteral));
+    try testing.expectEqual(ast.ExpressionStatement, @TypeOf(stmt.statement.expressionStatement.*));
+    try testing.expectEqual(ast.IntegerLiteral, @TypeOf(stmt.statement.expressionStatement.*.expression.?.integerLiteral.*));
 }
 
 test "IntegerLiteral-2" {
@@ -185,4 +189,50 @@ test "IntegerLiteral-2" {
     try testing.expectEqual(@as(u64, 5), node.statement.expressionStatement.expression.?.integerLiteral.value);
 
     try testing.expectEqualStrings("5", node.statement.expressionStatement.expression.?.integerLiteral.token.Literal);
+}
+
+test "ParsingPrefixExpression" {
+    const PrefixTests = struct { input: [:0]const u8, operator: []const u8, integerValue: u32 };
+
+    var tests: [2]PrefixTests = .{
+        .{ .input = "!5;", .operator = "!", .integerValue = 5 },
+        .{ .input = "-15;", .operator = "-", .integerValue = 15 },
+    };
+
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    var allocator = std.heap.ArenaAllocator.init(gpa.allocator());
+    defer allocator.deinit();
+
+    var alloc = allocator.allocator();
+
+    for (tests) |tc| {
+        var lex = Lexer.init(tc.input);
+        var par = Parser.init(lex, alloc);
+        defer par.deinit();
+
+        var program = par.parseProgram();
+
+        //assert
+        try testing.expect(1 == program.statements.items.len);
+
+        const node = program.statements.items[0];
+
+        try testing.expectEqual(ast.ExpressionStatement, @TypeOf(node.statement.expressionStatement.*));
+
+        const expr = node.statement.expressionStatement.*.expression.?.prefixExpression;
+
+        try testing.expectEqual(ast.PrefixExpression, @TypeOf(expr.*));
+
+        try testing.expectEqual(tc.operator, expr.operator);
+
+        try testIntegerLiteral(alloc, expr.rightExprPtr.*.?, tc.integerValue);
+    }
+}
+
+fn testIntegerLiteral(allocator: std.mem.Allocator, stmt: ast.Expression, value: u32) !void {
+    try testing.expectEqual(ast.IntegerLiteral, @TypeOf(stmt.integerLiteral.*));
+
+    try testing.expectEqual(stmt.integerLiteral.*.value, value);
+
+    try testing.expectEqualStrings(stmt.integerLiteral.*.TokenLiteral(), try std.fmt.allocPrint(allocator, "{d}", .{value}));
 }
