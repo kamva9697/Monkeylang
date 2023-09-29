@@ -6,28 +6,39 @@ const TokenType = token.TokenType;
 const mem = std.mem;
 const testing = std.testing;
 
-pub const prefixParseFn = *const fn (*Parser) ?ast.Expression;
-pub const infixParseFn = *const fn (ast.Expression) ?ast.Expression;
-
-pub const PRECEDENCES = enum(i32) {
-    LOWEST = 1,
-    EQUALS, // ==
-    LESSGREATER, // > or <
-    SUM, // +
-    PRODUCT, // *
-    PREFIX, // -x or !x
-    CALL, // myfunction(x)
-};
-
+// Both a namespace and Class
+// Contains Parser State
 pub const Parser = struct {
     lex: lexer.Lexer,
     curToken: token.Token,
     peekToken: token.Token,
     prefixParseFns: std.AutoHashMapUnmanaged(token.TokenType, prefixParseFn),
     infixParseFns: std.AutoHashMapUnmanaged(token.TokenType, prefixParseFn),
-    errors: std.ArrayList([:0]const u8) = undefined,
+    errors: std.ArrayList(ParserErrorContext) = undefined,
     gpa: std.mem.Allocator,
 
+    // Class type Declarations
+    pub const prefixParseFn = *const fn (*Parser) ?ast.Expression;
+    pub const infixParseFn = *const fn (ast.Expression) ?ast.Expression;
+
+    pub const ParserError = error{ NoPrefixParseFn, UnexpectedToken };
+
+    pub const ParserErrorContext = struct {
+        err: ParserError,
+        msg: []const u8,
+    };
+
+    pub const PRECEDENCES = enum(i32) {
+        LOWEST = 1,
+        EQUALS, // ==
+        LESSGREATER, // > or <
+        SUM, // +
+        PRODUCT, // *
+        PREFIX, // -x or !x
+        CALL, // myfunction(x)
+    };
+
+    //struct methods(Class methods not instance methods)
     pub fn init(l: lexer.Lexer, allocator: std.mem.Allocator) Parser {
         var p = Parser{
             .lex = l,
@@ -36,12 +47,13 @@ pub const Parser = struct {
             .infixParseFns = .{},
             .curToken = .{ .Type = undefined, .Literal = undefined },
             .peekToken = .{ .Type = undefined, .Literal = undefined },
+            .errors = std.ArrayList(ParserErrorContext).init(allocator),
         };
-
-        p.errors = std.ArrayList([:0]const u8).init(p.gpa);
 
         p.registerPrefix(token.TokenType.IDENT, &parseIdentifier);
         p.registerPrefix(token.TokenType.INT, &parseIntegerLiteral);
+        p.registerPrefix(token.TokenType.BANG, &parsePrefixExpression);
+        p.registerPrefix(token.TokenType.MINUS, &parsePrefixExpression);
 
         p.nextToken();
         p.nextToken();
@@ -83,45 +95,89 @@ pub const Parser = struct {
         };
     }
 
+    // Parse Expressions
     pub fn parseExpressionStatement(self: *Parser) ?ast.Statement {
-        var stmt = ast.ExpressionStatement{ .token = self.curToken, .expression = null };
-        stmt.expression = self.parseExpression(.LOWEST);
+        var stmtPtr = self.gpa.create(ast.ExpressionStatement) catch unreachable;
+
+        stmtPtr.* = ast.ExpressionStatement{ .token = self.curToken, .expression = null };
+
+        stmtPtr.*.expression = self.parseExpression(.LOWEST);
 
         if (self.peekTokenIs(.SEMICOLON)) {
             self.nextToken();
         }
 
-        return ast.Statement{ .expressionStatement = stmt };
+        return ast.Statement{ .expressionStatement = stmtPtr };
     }
 
     pub fn parseExpression(self: *Parser, prec: PRECEDENCES) ?ast.Expression {
         _ = prec;
         var prefix = self.prefixParseFns.get(self.curToken.Type);
-        if (prefix) |unwrapped_prefix| {
-            var leftExpr = unwrapped_prefix(self);
+        if (prefix) |unwrapped_prefixFn| {
+            var leftExpr = unwrapped_prefixFn(self);
             return leftExpr;
         }
+        // Add Error Context
+        self.noPrefixParseFn(self.curToken.Type);
         return null;
     }
 
-    pub fn parseIdentifier(self: *Parser) ?ast.Expression {
-        var node = ast.Identifier{ .token = self.curToken, .value = self.curToken.Literal };
+    pub fn parsePrefixExpression(self: *Parser) ?ast.Expression {
+        var exprPtr = self.gpa.create(ast.PrefixExpression) catch |err| {
+            std.debug.panic("Parse Expression Error: {any}", .{err});
+        };
 
-        return ast.Expression{ .identifier = node };
+        exprPtr.* = ast.PrefixExpression{
+            .token = self.curToken,
+            .operator = self.curToken.Literal,
+            .rightExprPtr = undefined,
+        };
+
+        self.nextToken();
+
+        //right-hand expression
+        var rightExpr: *?ast.Expression = self.gpa.create(?ast.Expression) catch {
+            std.debug.panic("Allocator Error", .{});
+        };
+
+        rightExpr.* = self.parseExpression(.PREFIX);
+
+        exprPtr.rightExprPtr = rightExpr;
+
+        return ast.Expression{ .prefixExpression = exprPtr };
     }
 
-    pub fn parseIntegerLiteral(self: *Parser) ?ast.Expression {
-        var lit = ast.IntegerLiteral{ .token = self.curToken, .value = undefined };
+    // Parse Identifiers
+    pub fn parseIdentifier(self: *Parser) ?ast.Expression {
+        var nodePtr = self.gpa.create(ast.Identifier) catch |err| {
+            std.debug.panic("Parse Expression Error: {any}", .{err});
+        };
 
-        lit.value = std.fmt.parseInt(u32, lit.token.Literal, 10) catch |err| {
+        nodePtr.* = ast.Identifier{ .token = self.curToken, .value = self.curToken.Literal };
+
+        return ast.Expression{ .identifier = nodePtr };
+    }
+
+    // Parse Literals
+    pub fn parseIntegerLiteral(self: *Parser) ?ast.Expression {
+        var litPtr = self.gpa.create(ast.IntegerLiteral) catch |err| {
+            std.debug.panic("Parse Expression Error: {any}", .{err});
+        };
+
+        litPtr.* = ast.IntegerLiteral{ .token = self.curToken, .value = undefined };
+
+        litPtr.value = std.fmt.parseInt(u32, litPtr.token.Literal, 10) catch |err| {
             std.debug.panic("Error: {any} could not parse {any} as integer", .{ err, self.curToken });
         };
 
-        return ast.Expression{ .integerLiteral = lit };
+        return ast.Expression{ .integerLiteral = litPtr };
     }
 
+    // Parse Statements
     pub fn parseLetStatement(self: *Parser) ?ast.Statement {
-        var letStmt = ast.LetStatement{
+        var letStmtPtr = self.gpa.create(ast.LetStatement) catch unreachable;
+
+        letStmtPtr.* = ast.LetStatement{
             .token = self.curToken,
             .value = undefined,
             .name = undefined,
@@ -131,7 +187,7 @@ pub const Parser = struct {
             return null;
         }
 
-        letStmt.name = ast.Identifier{ .token = self.curToken, .value = self.curToken.Literal };
+        letStmtPtr.*.name = ast.Identifier{ .token = self.curToken, .value = self.curToken.Literal };
 
         if (!self.expectPeek(.ASSIGN)) {
             return null;
@@ -141,20 +197,23 @@ pub const Parser = struct {
         // encounter a semicolon
         while (!self.curTokenIs(.SEMICOLON)) : (self.nextToken()) {}
 
-        return ast.Statement{ .letStatement = letStmt };
+        return ast.Statement{ .letStatement = letStmtPtr };
     }
 
     pub fn parseReturnStatement(self: *Parser) ?ast.Statement {
-        var returnStmt = ast.ReturnStatement{ .token = self.curToken, .returnValue = undefined };
+        var returnStmtPtr = self.gpa.create(ast.ReturnStatement) catch unreachable;
+
+        returnStmtPtr.* = ast.ReturnStatement{ .token = self.curToken, .returnValue = undefined };
 
         // TODO: Evaluate Expressions, For now,
         // We're skipping the expressions until we
         // encounter a semicolon
         while (!self.curTokenIs(.SEMICOLON)) : (self.nextToken()) {}
 
-        return ast.Statement{ .returnStatement = returnStmt };
+        return ast.Statement{ .returnStatement = returnStmtPtr };
     }
 
+    ///////////// Utilities ////////////////////////
     pub inline fn curTokenIs(self: *Parser, tok: TokenType) bool {
         return self.curToken.Type == tok;
     }
@@ -173,13 +232,14 @@ pub const Parser = struct {
     }
 
     pub inline fn peekError(self: *Parser, tok: TokenType) void {
-        var buf: [1024:0]u8 = undefined;
+        var msg = std.fmt.allocPrint(self.gpa, "Expected next token to be {any} got '{any}' instead", .{ tok, self.peekToken.Type }) catch |err| {
+            std.debug.panic("peekError01: Out of Memory {any}", .{err});
+        };
 
-        var msg = std.fmt.bufPrint(&buf, "Expected next token to be {any} got '{any}' instead", .{ tok, self.peekToken.Type }) catch unreachable;
-
-        var msg_sent = std.mem.concatWithSentinel(self.gpa, u8, &[_][]const u8{msg}, 0) catch unreachable;
-
-        self.errors.append(msg_sent) catch unreachable;
+        var ctx: ParserErrorContext = .{ .err = ParserError.UnexpectedToken, .msg = msg };
+        self.errors.append(ctx) catch |err| {
+            std.debug.panic("peekError: Out of Memory: {any}", .{err});
+        };
     }
 
     pub fn registerPrefix(self: *Parser, currentToken: token.TokenType, prefixFunc: prefixParseFn) void {
@@ -194,8 +254,21 @@ pub const Parser = struct {
         };
     }
 
+    pub fn noPrefixParseFn(self: *Parser, tok: token.TokenType) void {
+        var errCtx = ParserErrorContext{ .err = ParserError.NoPrefixParseFn, .msg = undefined };
+
+        var msg = std.fmt.allocPrint(self.gpa, "Error: NO Prefix function found for {any}", .{tok}) catch |err| {
+            std.debug.panic("{any}", .{err});
+        };
+
+        errCtx.msg = msg;
+        self.errors.append(errCtx) catch {
+            std.debug.panic("Errors: Out of M", .{});
+        };
+    }
+
+    // Destructor
     pub fn deinit(self: *Parser) void {
-        @setCold(true);
         self.errors.deinit();
         self.prefixParseFns.deinit(self.gpa);
         self.infixParseFns.deinit(self.gpa);
