@@ -39,6 +39,9 @@ pub const Lexer = struct {
             '*' => .{ .Type = .ASTERISK, .Literal = token.ASTERISK },
             '<' => .{ .Type = .LT, .Literal = token.LT },
             '>' => .{ .Type = .GT, .Literal = token.GT },
+            '|' => .{ .Type = .OR, .Literal = token.OR },
+            '&' => .{ .Type = .AND, .Literal = token.AND },
+            '^' => .{ .Type = .XOR, .Literal = token.XOR },
             '=' => blk: {
                 if (self.input[self.peekPosition] == '=') {
                     self.readChar();
@@ -76,21 +79,12 @@ pub const Lexer = struct {
         }
     }
 
-    // readNumber: Doesn't convert the string to an actual number
-    // it verifies that characters are digits, for now.
     pub fn readNumber(self: *Lexer) []const u8 {
-        const position = self.position;
+        const curPos = self.position;
 
-        var iter = mem.tokenize(u8, self.input[position..], " ,./{[]\\();:)}");
+        var iter = mem.tokenize(u8, self.input[curPos..], " -=+,./{[]\\();:}*|>");
         const ident = iter.next() orelse unreachable;
 
-        for (ident) |ch| {
-            if (!std.ascii.isDigit(ch)) {
-                // TODO: Lexical Errors
-                // var error[:0]const u8ing: [512]u8 = undefined;
-                // @compileError(try std.fmt.bufPrint(error[:0]const u8ing[0..], "{c} is not an int.", .{ch}));
-            }
-        }
         advancePointers(self, ident.len);
 
         return ident;
@@ -99,7 +93,7 @@ pub const Lexer = struct {
     pub inline fn readIdentifier(self: *Lexer) []const u8 {
         const position = self.position;
 
-        var iter = mem.tokenize(u8, self.input[position..], " ,./{[]\\();:}");
+        var iter = mem.tokenize(u8, self.input[position..], " ,|./{[]\\();:}&^");
         const ident = iter.next() orelse unreachable;
 
         advancePointers(self, ident.len);

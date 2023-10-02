@@ -55,6 +55,12 @@ pub const delimiterTests = [_]Test{
     .{ .expectedType = .SEMICOLON, .expectedLiteral = ";" },
 };
 
+pub const bitWiseOperators = [_]Test{
+    .{ .expectedType = .OR, .expectedLiteral = "|" },
+    .{ .expectedType = .AND, .expectedLiteral = "&" },
+    .{ .expectedType = .XOR, .expectedLiteral = "^" },
+};
+
 pub const arithmeticOps = [_]Test{
     .{ .expectedType = .LBRACE, .expectedLiteral = "{" },
     .{ .expectedType = .IDENT, .expectedLiteral = "x" },
@@ -91,7 +97,18 @@ test "DelimeterTest" {
 
     for (delimiterTests) |tc| {
         var tok = lex.nextToken();
+        try testing.expectEqual(tc.expectedType, tok.Type);
+        try testing.expectEqualStrings(tc.expectedLiteral, tok.Literal);
+    }
+}
 
+test "BitWiseOperators" {
+    const input = "|&^";
+
+    var lex = Lexer.init(input);
+
+    for (bitWiseOperators) |tc| {
+        var tok = lex.nextToken();
         try testing.expectEqual(tc.expectedType, tok.Type);
         try testing.expectEqualStrings(tc.expectedLiteral, tok.Literal);
     }
@@ -103,7 +120,6 @@ test "BooleanoperatorTests" {
 
     for (booleanOps) |tc| {
         var tok = lex.nextToken();
-
         try testing.expectEqual(tc.expectedType, tok.Type);
         try testing.expectEqualStrings(tc.expectedLiteral, tok.Literal);
     }
@@ -128,7 +144,6 @@ test "VariableAssignmentTest" {
 
     for (statementTest) |tc| {
         var tok = lex.nextToken();
-
         try testing.expectEqual(tc.expectedType, tok.Type);
         try testing.expectEqualStrings(tc.expectedLiteral, tok.Literal);
     }

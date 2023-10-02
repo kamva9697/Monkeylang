@@ -21,6 +21,11 @@ pub const TokenType = enum(usize) {
     LT,
     GT,
 
+    // BitWise
+    AND,
+    OR,
+    XOR,
+
     // identifiers and literals
     IDENT,
     INT,
@@ -84,6 +89,11 @@ pub const NOT_EQ = "!=";
 
 pub const LT = "<";
 pub const GT = ">";
+
+// Bitwise
+pub const AND = "&";
+pub const OR = "|";
+pub const XOR = "^";
 
 //Delimiters
 pub const COMMA = ",";
