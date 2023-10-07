@@ -10,9 +10,15 @@ pub const Test = struct {
     expectedLiteral: []const u8,
 };
 
-pub const booleanOps = [_]Test{ .{ .expectedType = .EQ, .expectedLiteral = "==" }, .{ .expectedType = .NOT_EQ, .expectedLiteral = "!=" } };
+// zigfmt: Off
+pub const booleanOperators = [_]Test{
+    .{ .expectedType = .EQ, .expectedLiteral = "==" },
+    .{ .expectedType = .NOT_EQ, .expectedLiteral = "!=" },
+};
+// zigfmt: On
+
 // .expectedType = token.IF, .expectedLiteral = "if" }, .{ .expectedType = token.ELSE, .expectedLiteral = "else" }, .{ .expectedType = token.RETURN, .expectedLiteral = "return" },
-pub const statementTest = [_]Test{
+pub const variableAssignmentTets = [_]Test{
     .{ .expectedType = .LET, .expectedLiteral = "let" },
     .{ .expectedType = .IDENT, .expectedLiteral = "five" },
     .{ .expectedType = .ASSIGN, .expectedLiteral = "=" },
@@ -61,7 +67,7 @@ pub const bitWiseOperators = [_]Test{
     .{ .expectedType = .XOR, .expectedLiteral = "^" },
 };
 
-pub const arithmeticOps = [_]Test{
+pub const arithmeticOperators = [_]Test{
     .{ .expectedType = .LBRACE, .expectedLiteral = "{" },
     .{ .expectedType = .IDENT, .expectedLiteral = "x" },
     .{ .expectedType = .PLUS, .expectedLiteral = "+" },
@@ -92,57 +98,41 @@ test "LexerEOF" {
 
 test "DelimeterTest" {
     const input = "=+(){},;";
-
     var lex = Lexer.init(input);
 
-    for (delimiterTests) |tc| {
-        var tok = lex.nextToken();
-        try testing.expectEqual(tc.expectedType, tok.Type);
-        try testing.expectEqualStrings(tc.expectedLiteral, tok.Literal);
-    }
+    try run_test(&delimiterTests, &lex);
 }
 
 test "BitWiseOperators" {
     const input = "|&^";
-
     var lex = Lexer.init(input);
 
-    for (bitWiseOperators) |tc| {
-        var tok = lex.nextToken();
-        try testing.expectEqual(tc.expectedType, tok.Type);
-        try testing.expectEqualStrings(tc.expectedLiteral, tok.Literal);
-    }
+    try run_test(&bitWiseOperators, &lex);
 }
+
 test "BooleanoperatorTests" {
     const input = "== !=";
-
     var lex = Lexer.init(input);
 
-    for (booleanOps) |tc| {
-        var tok = lex.nextToken();
-        try testing.expectEqual(tc.expectedType, tok.Type);
-        try testing.expectEqualStrings(tc.expectedLiteral, tok.Literal);
-    }
+    try run_test(&booleanOperators, &lex);
 }
 
 test "ArithmeticTests" {
     const input = "{x + y};\n!-/*5;\n5 < 10 > 5";
-
     var lex = Lexer.init(input);
 
-    for (arithmeticOps) |tc| {
-        var tok = lex.nextToken();
-        try testing.expectEqual(tc.expectedType, tok.Type);
-        try testing.expectEqualStrings(tc.expectedLiteral, tok.Literal);
-    }
+    try run_test(&arithmeticOperators, &lex);
 }
 
 test "VariableAssignmentTest" {
     const input = "let five = 5;\nlet ten = 10;\nlet add = fn(x, y)\nlet result = add(five, ten);";
-
     var lex = Lexer.init(input);
 
-    for (statementTest) |tc| {
+    try run_test(&variableAssignmentTets, &lex);
+}
+
+fn run_test(expectedTokens: []const Test, lex: *Lexer) !void {
+    for (expectedTokens) |tc| {
         var tok = lex.nextToken();
         try testing.expectEqual(tc.expectedType, tok.Type);
         try testing.expectEqualStrings(tc.expectedLiteral, tok.Literal);
