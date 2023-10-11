@@ -2,6 +2,45 @@ const std = @import("std");
 const token = @import("token.zig");
 const TokenType = @import("token.zig").TokenType;
 const ArrayList = std.ArrayList;
+const Parser = @import("parser.zig");
+const io = std.io;
+
+pub const Operator = enum {
+    plus,
+    minus,
+    multiply,
+    divide,
+    not,
+    greater_than,
+    less_than,
+    equal_to,
+    not_equal_to,
+
+    pub fn toString(op: Operator) []const u8 {
+        return switch (op) {
+            Operator.plus => "+",
+            Operator.minus => "-",
+            Operator.multiply => "*",
+            Operator.divide => "/",
+            Operator.not => "!",
+            Operator.greater_than => ">",
+            Operator.less_than => "<",
+            Operator.equal_to => "==",
+            Operator.not_equal_to => "!=",
+        };
+    }
+    pub fn fromString(literal: []const u8) ?Operator {
+        const ops = @typeInfo(Operator).Enum.fields;
+        inline for (ops) |op| {
+            const operator: Operator = @enumFromInt(op.value);
+
+            if (std.mem.eql(u8, operator.toString(), literal)) {
+                return operator;
+            }
+        }
+        return null;
+    }
+};
 
 ///// Abstract Types/ Interfaces //////
 pub const Node = struct {
@@ -56,7 +95,7 @@ pub const Node = struct {
     pub const PrefixExpression = struct {
         base: Node = .{ .id = .PrefixExpression },
         token: token.Token,
-        operator: []const u8,
+        operator: Operator,
         rightExprPtr: ?*Node,
     };
 
@@ -64,7 +103,7 @@ pub const Node = struct {
         base: Node = .{ .id = .InfixExpression },
         token: token.Token,
         leftExprPtr: ?*Node,
-        operator: []const u8,
+        operator: Operator,
         rightExprPtr: ?*Node,
     };
 
@@ -78,7 +117,6 @@ pub const Node = struct {
     pub fn tokenType(base: *Node) TokenType {
         return switch (base.id) {
             inline else => |case| {
-                // const node = base.cast(case).?;
                 const node = @fieldParentPtr(Id.Type(case), "base", base);
                 return node.token.Type;
             },
@@ -122,24 +160,29 @@ pub const Node = struct {
             },
             .PrefixExpression => {
                 const prefixExpr = @fieldParentPtr(PrefixExpression, "base", node);
-                try writer.writeAll(prefixExpr.operator);
+
+                try writer.writeAll("(");
+                try writer.writeAll(prefixExpr.operator.toString());
 
                 if (prefixExpr.rightExprPtr) |rightExpr| {
                     try rightExpr.toString(writer);
                 }
+                try writer.writeAll(")");
             },
             .InfixExpression => {
                 const infixExpr = @fieldParentPtr(InfixExpression, "base", node);
 
+                try writer.writeAll("(");
                 if (infixExpr.leftExprPtr) |leftExpr| {
                     try leftExpr.toString(writer);
                 }
 
-                try writer.writeAll(infixExpr.operator);
+                try writer.print(" {s} ", .{infixExpr.operator.toString()});
 
                 if (infixExpr.rightExprPtr) |rightExpr| {
                     try rightExpr.toString(writer);
                 }
+                try writer.writeAll(")");
             },
         };
     }
@@ -149,17 +192,15 @@ pub const Node = struct {
 pub const Tree = struct {
     statements: std.ArrayList(*Node),
 
-    // arena: std.heap.ArenaAllocator.State,
-    allocator: std.mem.Allocator,
-
     pub fn toString(self: *Tree, writer: anytype) !void {
-        for (self.statements) |st| {
+        for (self.statements.items) |st| {
             try st.toString(writer);
         }
     }
 
     pub fn deinit(self: *Tree) void {
-        self.arena.promote(self.allocator).deinit();
+        self.statements.deinit();
+        self.string_ast.deinit();
     }
 };
 
@@ -191,30 +232,29 @@ test "toString" {
 
     try testing.expectEqualStrings("let myVar = anotherVar;", buf.items);
 }
-// test "Tree Test" {
-//     const testing = std.testing;
 
-//     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-//     var allocator = gpa.allocator();
-//     var program = Program.init(allocator);
-//     defer program.deinit();
+test "Tree Test" {
+    const testing = std.testing;
 
-//     var identPtr = allocator.create(Node.Identifier) catch unreachable;
-//     identPtr.* = Node.Identifier{ .token = token.Token{ .Type = .IDENT, .Literal = "anotherVar" }, .value = "anotherVar" };
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    var allocator = gpa.allocator();
+    var buf = std.ArrayList(u8).init(allocator);
 
-//     var letStmtPtr = allocator.create(Node.LetStatement) catch unreachable;
+    var identPtr = try allocator.create(Node.Identifier);
+    identPtr.* = Node.Identifier{ .token = token.Token{ .Type = .IDENT, .Literal = "anotherVar" }, .value = "anotherVar" };
 
-//     letStmtPtr.* = Node.LetStatement{ .token = token.Token{ .Type = .LET, .Literal = "let" }, .name = Node.Identifier{
-//         .token = token.Token{ .Type = .IDENT, .Literal = "myVar" },
-//         .value = "myVar",
-//     }, .value = Node.Expression{
-//         .identifier = identPtr,
-//     } };
+    var letStmtPtr = try allocator.create(Node.LetStatement);
 
-//     try program.statements.append(Node{ .statement = Statement{
-//         .letStatement = letStmtPtr,
-//     } });
+    letStmtPtr.* = Node.LetStatement{
+        .token = token.Token{ .Type = .LET, .Literal = "let" },
+        .name = Node.Identifier{
+            .token = token.Token{ .Type = .IDENT, .Literal = "myVar" },
+            .value = "myVar",
+        },
+        .value = &identPtr.base,
+    };
 
-//     var string = program.toString(allocator);
-//     try testing.expectEqualStrings("let myVar = anotherVar;", string);
-// }
+    try (&letStmtPtr.base).toString(buf.writer());
+
+    try testing.expectEqualStrings("let myVar = anotherVar;", buf.items);
+}
