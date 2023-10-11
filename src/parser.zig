@@ -5,6 +5,7 @@ const token = @import("token.zig");
 const TokenType = token.TokenType;
 const Token = token.Token;
 const Node = ast.Node;
+const Operator = ast.Operator;
 const mem = std.mem;
 const testing = std.testing;
 
@@ -15,13 +16,13 @@ pub const Parser = struct {
     curToken: Token,
     peekToken: Token,
     prefixParseFns: std.AutoHashMapUnmanaged(TokenType, prefixParseFn),
-    infixParseFns: std.AutoHashMapUnmanaged(TokenType, prefixParseFn),
+    infixParseFns: std.AutoHashMapUnmanaged(TokenType, infixParseFn),
     errors: std.ArrayList(ParserErrorContext) = undefined,
     gpa: std.mem.Allocator,
 
     // Class type Declarations
     pub const prefixParseFn = *const fn (*Parser) anyerror!?*Node;
-    pub const infixParseFn = *const fn (Node) anyerror!?*Node;
+    pub const infixParseFn = *const fn (*Parser, ?*Node) anyerror!?*Node;
 
     pub const ParserError = error{ NoPrefixParseFn, UnexpectedToken };
 
@@ -30,14 +31,29 @@ pub const Parser = struct {
         msg: []const u8,
     };
 
-    pub const PRECEDENCES = enum(i32) {
-        LOWEST = 1,
+    pub const Precedence = enum(u8) {
+        LOWEST,
         EQUALS, // ==
         LESSGREATER, // > or <
         SUM, // +
         PRODUCT, // *
         PREFIX, // -x or !x
         CALL, // myfunction(x)
+
+        pub fn fromTokenType(tok: TokenType) @This() {
+            return switch (tok) {
+                .EQ => .EQUALS,
+                .NOT_EQ => .EQUALS,
+                .LT => .LESSGREATER,
+                .GT => .LESSGREATER,
+                .PLUS => .SUM,
+                .MINUS => .SUM,
+                .SLASH => .PRODUCT,
+                .ASTERISK => .PRODUCT,
+                .LPAREN => .CALL,
+                else => .LOWEST,
+            };
+        }
     };
 
     //struct methods(Class methods not instance methods)
@@ -56,6 +72,14 @@ pub const Parser = struct {
         p.registerPrefix(TokenType.INT, &parseIntegerLiteral);
         p.registerPrefix(TokenType.BANG, &parsePrefixExpression);
         p.registerPrefix(TokenType.MINUS, &parsePrefixExpression);
+        p.registerInfix(TokenType.PLUS, &parseInfixExpression);
+        p.registerInfix(TokenType.MINUS, &parseInfixExpression);
+        p.registerInfix(TokenType.SLASH, &parseInfixExpression);
+        p.registerInfix(TokenType.ASTERISK, &parseInfixExpression);
+        p.registerInfix(TokenType.EQ, &parseInfixExpression);
+        p.registerInfix(TokenType.NOT_EQ, &parseInfixExpression);
+        p.registerInfix(TokenType.LT, &parseInfixExpression);
+        p.registerInfix(TokenType.GT, &parseInfixExpression);
 
         p.nextToken();
         p.nextToken();
@@ -69,9 +93,7 @@ pub const Parser = struct {
     }
 
     pub fn parseProgram(self: *Parser) !ast.Tree {
-        // var arenaAlloc = std.heap.ArenaAllocator(self.gpa);
         var tree = ast.Tree{
-            .allocator = self.gpa,
             .statements = std.ArrayList(*Node).init(self.gpa),
         };
 
@@ -98,23 +120,48 @@ pub const Parser = struct {
         };
     }
 
-    pub fn parseExpression(self: *Parser, prec: PRECEDENCES) !?*Node {
-        _ = prec;
+    pub fn parseExpression(self: *Parser, prec: Precedence) !?*Node {
         var prefix = self.prefixParseFns.get(self.curToken.Type);
+        var leftExprNode: ?*Node = null;
+
         if (prefix) |unwrapped_prefixFn| {
-            var leftExpr = try unwrapped_prefixFn(self);
-            return leftExpr;
+            leftExprNode = try unwrapped_prefixFn(self);
+        } else {
+            // Add Error Context
+            self.noPrefixParseFn(self.curToken.Type);
+            return null;
         }
-        // Add Error Context
-        self.noPrefixParseFn(self.curToken.Type);
-        return null;
+
+        while (!self.peekTokenIs(TokenType.SEMICOLON) and @intFromEnum(prec) < @intFromEnum(self.peekPrecedence())) {
+            var infix = self.infixParseFns.get(self.peekToken.Type);
+            if (infix) |unwrapped_infix| {
+                self.nextToken();
+                leftExprNode = try unwrapped_infix(self, leftExprNode);
+            }
+        }
+
+        return leftExprNode;
+    }
+
+    pub fn parseInfixExpression(self: *Parser, left: ?*Node) !?*Node {
+        var exprPtr = try self.gpa.create(Node.InfixExpression);
+        exprPtr.* = Node.InfixExpression{
+            .token = self.curToken,
+            .leftExprPtr = left.?,
+            .operator = Operator.fromString(self.curToken.Literal).?,
+            .rightExprPtr = null,
+        };
+        var prec = self.curPrecedence();
+        self.nextToken();
+        exprPtr.rightExprPtr = try self.parseExpression(prec);
+        return &exprPtr.base;
     }
 
     pub fn parsePrefixExpression(self: *Parser) !?*Node {
         var exprPtr = try self.gpa.create(Node.PrefixExpression);
         exprPtr.* = Node.PrefixExpression{
             .token = self.curToken,
-            .operator = self.curToken.Literal,
+            .operator = Operator.fromString(self.curToken.Literal).?,
             .rightExprPtr = undefined,
         };
 
@@ -192,6 +239,13 @@ pub const Parser = struct {
     }
 
     ///////////// Utilities ////////////////////////
+    pub fn peekPrecedence(self: *Parser) Precedence {
+        return Precedence.fromTokenType(self.peekToken.Type);
+    }
+    pub fn curPrecedence(self: *Parser) Precedence {
+        return Precedence.fromTokenType(self.curToken.Type);
+    }
+
     pub inline fn curTokenIs(self: *Parser, tok: TokenType) bool {
         return self.curToken.Type == tok;
     }
@@ -226,7 +280,7 @@ pub const Parser = struct {
         };
     }
 
-    pub fn registerInfix(self: *Parser, currentToken: Token, infixFunc: infixParseFn) void {
+    pub fn registerInfix(self: *Parser, currentToken: TokenType, infixFunc: infixParseFn) void {
         self.infixParseFns.put(self.gpa, currentToken, infixFunc) catch |err| {
             std.debug.panic("Error: {any}", .{err});
         };

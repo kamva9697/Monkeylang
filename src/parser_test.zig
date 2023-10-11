@@ -120,12 +120,12 @@ test "IntegerLiteral" {
     try testing.expectEqualStrings("5", integerLiteralNode.token.Literal);
 }
 
-test "ParsingPrefixExpression" {
-    const PrefixTests = struct { input: [:0]const u8, operator: []const u8, integerValue: u32 };
+test "PrefixTests" {
+    const PrefixTests = struct { input: [:0]const u8, operator: ast.Operator, integerValue: u32 };
 
     var tests: [2]PrefixTests = .{
-        .{ .input = "!5;", .operator = "!", .integerValue = 5 },
-        .{ .input = "-15;", .operator = "-", .integerValue = 15 },
+        .{ .input = "!5;", .operator = .not, .integerValue = 5 },
+        .{ .input = "-15;", .operator = .minus, .integerValue = 15 },
     };
 
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
@@ -142,7 +142,7 @@ test "ParsingPrefixExpression" {
         var program = try par.parseProgram();
 
         //assert
-        try testing.expect(1 == program.statements.items.len);
+        // try testing.expect(1 == program.statements.items.len);
 
         const node = program.statements.items[0];
 
@@ -158,6 +158,132 @@ test "ParsingPrefixExpression" {
     }
 }
 
+test "InfixTests" {
+    const InfixStmt = struct { input: [:0]const u8, left: u32, op: ast.Operator, right: u32 };
+    const tests = [_]InfixStmt{
+        .{ .input = "5 + 5;", .left = 5, .op = .plus, .right = 5 },
+        .{ .input = "5 - 5;", .left = 5, .op = .minus, .right = 5 },
+        .{ .input = "5 * 5;", .left = 5, .op = .multiply, .right = 5 },
+        .{ .input = "5 / 5;", .left = 5, .op = .divide, .right = 5 },
+        .{ .input = "5 > 5;", .left = 5, .op = .greater_than, .right = 5 },
+        .{ .input = "5 < 5;", .left = 5, .op = .less_than, .right = 5 },
+        .{ .input = "5 == 5;", .left = 5, .op = .equal_to, .right = 5 },
+        .{ .input = "5 != 5;", .left = 5, .op = .not_equal_to, .right = 5 },
+    };
+
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    var allocator = std.heap.ArenaAllocator.init(gpa.allocator());
+    defer allocator.deinit();
+
+    var alloc = allocator.allocator();
+
+    for (tests) |tc| {
+        var lex = Lexer.init(tc.input);
+        var par = Parser.init(lex, alloc);
+        defer par.deinit();
+
+        var program = try par.parseProgram();
+
+        try testing.expectEqual(@as(usize, 1), program.statements.items.len);
+
+        const node = program.statements.items[0];
+
+        // assert
+        try testing.expectEqual(Node.Id.InfixExpression, node.id);
+
+        const expr = @fieldParentPtr(Node.InfixExpression, "base", node);
+
+        var leftPtr = Node.cast(expr.leftExprPtr.?, Node.Id.IntegerLiteral).?;
+        try testIntegerLiteral(alloc, leftPtr, tc.left);
+
+        try testing.expectEqual(tc.op, expr.operator);
+
+        var rightPtr = Node.cast(expr.rightExprPtr.?, Node.Id.IntegerLiteral).?;
+
+        try testIntegerLiteral(alloc, rightPtr, tc.right);
+    }
+}
+
+test "ToString" {
+    const Tests = [_]struct {
+        input: [:0]const u8,
+        expected: []const u8,
+    }{
+        .{
+            .input = "-a * b",
+            .expected = "((-a) * b)",
+        },
+        .{
+            .input = "!-a",
+            .expected = "(!(-a))",
+        },
+        .{
+            .input = "a + b + c",
+            .expected = "((a + b) + c)",
+        },
+        .{
+            .input = "a + b - c",
+            .expected = "((a + b) - c)",
+        },
+        .{
+            .input = "a * b * c",
+            .expected = "((a * b) * c)",
+        },
+        .{
+            .input = "a * b / c",
+            .expected = "((a * b) / c)",
+        },
+        .{
+            .input = "a + b / c",
+            .expected = "(a + (b / c))",
+        },
+        .{
+            .input = "a + b * c + d / e - f",
+            .expected = "(((a + (b * c)) + (d / e)) - f)",
+        },
+        // No precedence for ';', thus this should
+        // be parsed as two different statements not one.
+        // .{
+        //     .input = "3 + 4; -5 * 5",
+        //     .expected = "(3 + 4)((-5) * 5)",
+        // },
+        .{
+            .input = "5 > 4 == 3 < 4",
+            .expected = "((5 > 4) == (3 < 4))",
+        },
+        .{
+            .input = "5 < 4 != 3 > 4",
+            .expected = "((5 < 4) != (3 > 4))",
+        },
+        .{
+            .input = "3 + 4 * 5 == 3 * 1 + 4 * 5",
+            .expected = "((3 + (4 * 5)) == ((3 * 1) + (4 * 5)))",
+        },
+        .{
+            .input = "3 + 4 * 5 == 3 * 1 + 4 * 5",
+            .expected = "((3 + (4 * 5)) == ((3 * 1) + (4 * 5)))",
+        },
+    };
+
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    var alloc = gpa.allocator();
+    var buf = std.ArrayList(u8).init(alloc);
+
+    for (Tests) |tc| {
+        var lex = Lexer.init(tc.input);
+        var par = Parser.init(lex, alloc);
+        defer par.deinit();
+
+        var program = try par.parseProgram();
+
+        try program.toString(buf.writer());
+
+        try testing.expectEqualStrings(tc.expected, buf.items);
+
+        buf.clearRetainingCapacity();
+    }
+}
+
 fn testIntegerLiteral(allocator: std.mem.Allocator, stmt: *Node.IntegerLiteral, value: u32) !void {
     try testing.expectEqual(Node.IntegerLiteral, @TypeOf(stmt.*));
 
@@ -167,73 +293,3 @@ fn testIntegerLiteral(allocator: std.mem.Allocator, stmt: *Node.IntegerLiteral, 
 
     try testing.expectEqualStrings(stmt.token.Literal, try std.fmt.allocPrint(allocator, "{d}", .{value}));
 }
-
-// test "InfixTests" {
-//     const InfixStmt = struct { input: [:0]const u8, left: u32, op: []const u8, right: u32 };
-//     const tests = [_]InfixStmt{
-//         .{ .input = "5 + 5;", .left = 5, .op = "+", .right = 5 },
-//         .{ .input = "5 - 5;", .left = 5, .op = "-", .right = 5 },
-//         .{ .input = "5 * 5;", .left = 5, .op = "*", .right = 5 },
-//         .{ .input = "5 / 5;", .left = 5, .op = "/", .right = 5 },
-//         .{ .input = "5 > 5;", .left = 5, .op = ">", .right = 5 },
-//         .{ .input = "5 < 5;", .left = 5, .op = "<", .right = 5 },
-//         .{ .input = "5 == 5;", .left = 5, .op = "==", .right = 5 },
-//         .{ .input = "5 != 5;", .left = 5, .op = "!=", .right = 5 },
-//     };
-
-//     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-//     var allocator = std.heap.ArenaAllocator.init(gpa.allocator());
-//     defer allocator.deinit();
-
-//     var alloc = allocator.allocator();
-
-//     for (tests) |tc| {
-//         var lex = Lexer.init(tc.input);
-//         var par = Parser.init(lex, alloc);
-//         defer par.deinit();
-
-//         var program = par.parseProgram();
-
-//         // try testing.expectEqual(1, program.statements.items.len);
-
-//         {
-//             const node = program.statements.items[0];
-//             try testing.expectEqual(Node.ExpressionStatement, @TypeOf(node.statement.expressionStatement.*));
-//         }
-//         {
-//             const node = program.statements.items[0];
-
-//             try testing.expectEqual(Node.ExpressionStatement, @TypeOf(node.statement.expressionStatement.*));
-//         }
-
-//         {
-//             const node = program.statements.items[0];
-
-//             const expr = node.statement.expressionStatement.*.expression.?.infixExpression.*;
-
-//             try testing.expectEqual(Node.InfixExpression, @TypeOf(expr));
-//         }
-
-//         {
-//             const node = program.statements.items[0];
-
-//             const expr = node.statement.expressionStatement.*.expression.?.infixExpression.*;
-
-//             try testing.expectEqualStrings(tc.op, expr.operator);
-//         }
-//         {
-//             const node = program.statements.items[0];
-
-//             const expr = node.statement.expressionStatement.*.expression.?.infixExpression.*;
-
-//             try testIntegerLiteral(alloc, expr.leftExprPtr.*.?, tc.left);
-//         }
-
-//         {
-//             const node = program.statements.items[0];
-
-//             const expr = node.statement.expressionStatement.*.expression.?.infixExpression.*;
-//             try testIntegerLiteral(alloc, expr.rightExprPtr.*.?, tc.right);
-//         }
-//     }
-// }

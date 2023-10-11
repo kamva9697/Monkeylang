@@ -1,20 +1,21 @@
 # Monkey Lang
 
-Development of a toy programming language with zig based of *Writing an Interpreter with Go by Thorsten Ball*
+Development of a Monkey programming language with [zig](www.ziglang.org) based of *Writing an Interpreter with Go by Thorsten Ball*
 
-# Features:
-    - Lexer:
-        - Identifiers
-        - Keywords
-        - Arithmetic operators
-        - function prototypes
-    - Parser:
-        * Assignment statements e.g `let name = "kamva"`
-        * Return statements e.g `return add(5, 4)`
-
-
-## Work in Progess
-    - Lexer
-    - Parser
-    - AST
+## Components:
+    [x] Lexer:
+        [x] Tokens
+    [ ] Ast:
+        [ ] Identifiers
+        [ ] Integer Literals
+        [ ] Return Statements
+        [ ] PrefixExpression       
+        [ ] InfixExpression
+            
+    [ ] Parser:
+        [x] Assignment statements
+        [x] Return statements
+        [ ] Expressions:
+            [x] Prefix expressions
+            [x] Infix expressions
 
