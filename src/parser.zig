@@ -121,14 +121,15 @@ pub const Parser = struct {
     }
 
     pub fn parseExpression(self: *Parser, prec: Precedence) !?*Node {
-        var prefix = self.prefixParseFns.get(self.curToken.Type);
         var leftExprNode: ?*Node = null;
 
-        if (prefix) |unwrapped_prefixFn| {
+        var prefixFn = self.prefixParseFns.get(self.curToken.Type);
+
+        if (prefixFn) |unwrapped_prefixFn| {
             leftExprNode = try unwrapped_prefixFn(self);
         } else {
             // Add Error Context
-            self.noPrefixParseFn(self.curToken.Type);
+            try self.noPrefixParseFn(self.curToken.Type);
             return null;
         }
 
@@ -153,6 +154,13 @@ pub const Parser = struct {
         };
         var prec = self.curPrecedence();
         self.nextToken();
+
+        // right-assoc
+        // var associativity = switch (exprPtr.operator) {
+        //     .plus => @intFromEnum(prec) - @as(u8, 1),
+        //     else => @intFromEnum(prec),
+        // };
+
         exprPtr.rightExprPtr = try self.parseExpression(prec);
         return &exprPtr.base;
     }
@@ -286,14 +294,13 @@ pub const Parser = struct {
         };
     }
 
-    pub fn noPrefixParseFn(self: *Parser, tok: TokenType) void {
+    pub fn noPrefixParseFn(self: *Parser, tok: TokenType) !void {
         var errCtx = ParserErrorContext{ .err = ParserError.NoPrefixParseFn, .msg = undefined };
 
-        var msg = std.fmt.allocPrint(self.gpa, "Error: NO Prefix function found for {any}", .{tok}) catch |err| {
-            std.debug.panic("{any}", .{err});
-        };
+        var msg = try std.fmt.allocPrint(self.gpa, "Parser Error: No Prefix function found for {any}", .{tok});
 
         errCtx.msg = msg;
+
         self.errors.append(errCtx) catch {
             std.debug.panic("Errors: Out of M", .{});
         };

@@ -92,18 +92,13 @@ test "IdentifierExpression" {
 
     try testing.expect(program.statements.items.len == 1);
 
-    const stmt = program.statements.items[0];
-
-    try testing.expectEqual(Node.Id.Identifier, stmt.id);
-    const identifierNode = @fieldParentPtr(Node.Identifier, "base", stmt);
-
-    try testing.expectEqualStrings("foobar", identifierNode.token.Literal);
+    try testLiteralExpressions(program.statements.items[0], "foobar");
 }
 
 test "IntegerLiteral" {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     var allocator = std.heap.ArenaAllocator.init(gpa.allocator());
-    var input = "5;";
+    const input = "5;";
     var lex = Lexer.init(input);
     var par = Parser.init(lex, allocator.allocator());
     defer allocator.deinit();
@@ -112,18 +107,13 @@ test "IntegerLiteral" {
 
     try testing.expect(program.statements.items.len == 1);
 
-    const stmt = program.statements.items[0];
-
-    try testing.expectEqual(Node.Id.IntegerLiteral, stmt.id);
-    const integerLiteralNode = @fieldParentPtr(Node.IntegerLiteral, "base", stmt);
-    try testing.expectEqual(@as(u32, 5), integerLiteralNode.value);
-    try testing.expectEqualStrings("5", integerLiteralNode.token.Literal);
+    try testLiteralExpressions(program.statements.items[0], @as(u32, 5));
 }
 
 test "PrefixTests" {
     const PrefixTests = struct { input: [:0]const u8, operator: ast.Operator, integerValue: u32 };
 
-    var tests: [2]PrefixTests = .{
+    const tests: [2]PrefixTests = .{
         .{ .input = "!5;", .operator = .not, .integerValue = 5 },
         .{ .input = "-15;", .operator = .minus, .integerValue = 15 },
     };
@@ -142,7 +132,7 @@ test "PrefixTests" {
         var program = try par.parseProgram();
 
         //assert
-        // try testing.expect(1 == program.statements.items.len);
+        try testing.expect(1 == program.statements.items.len);
 
         const node = program.statements.items[0];
 
@@ -152,9 +142,7 @@ test "PrefixTests" {
 
         try testing.expectEqual(tc.operator, prefixExpressionNode.operator);
 
-        const rightExprNode = Node.cast(prefixExpressionNode.rightExprPtr.?, Node.Id.IntegerLiteral).?;
-
-        try testIntegerLiteral(alloc, rightExprNode, tc.integerValue);
+        try testLiteralExpressions(prefixExpressionNode.rightExprPtr.?, tc.integerValue);
     }
 }
 
@@ -189,18 +177,7 @@ test "InfixTests" {
         const node = program.statements.items[0];
 
         // assert
-        try testing.expectEqual(Node.Id.InfixExpression, node.id);
-
-        const expr = @fieldParentPtr(Node.InfixExpression, "base", node);
-
-        var leftPtr = Node.cast(expr.leftExprPtr.?, Node.Id.IntegerLiteral).?;
-        try testIntegerLiteral(alloc, leftPtr, tc.left);
-
-        try testing.expectEqual(tc.op, expr.operator);
-
-        var rightPtr = Node.cast(expr.rightExprPtr.?, Node.Id.IntegerLiteral).?;
-
-        try testIntegerLiteral(alloc, rightPtr, tc.right);
+        try testInfixExpressions(node, tc.left, tc.op, tc.right);
     }
 }
 
@@ -284,12 +261,44 @@ test "ToString" {
     }
 }
 
-fn testIntegerLiteral(allocator: std.mem.Allocator, stmt: *Node.IntegerLiteral, value: u32) !void {
+fn testIdentifier(node: *Node, expected: anytype) !void {
+    try testing.expectEqual(Node.Id.Identifier, node.id);
+
+    const identifierNode = node.cast(Node.Id.Identifier).?;
+
+    try testing.expectEqualStrings(expected, identifierNode.token.Literal);
+}
+
+fn testIntegerLiteral(node: *Node, value: anytype) !void {
+    var buf: [1024]u8 = undefined;
+
+    const stmt = Node.cast(node, Node.Id.IntegerLiteral).?;
+
     try testing.expectEqual(Node.IntegerLiteral, @TypeOf(stmt.*));
 
     const int = stmt.value;
 
     try testing.expectEqual(int, value);
 
-    try testing.expectEqualStrings(stmt.token.Literal, try std.fmt.allocPrint(allocator, "{d}", .{value}));
+    try testing.expectEqualStrings(stmt.token.Literal, try std.fmt.bufPrint(&buf, "{d}", .{value}));
+}
+
+fn testLiteralExpressions(node: *Node, expected: anytype) !void {
+    return switch (@typeInfo(@TypeOf(expected))) {
+        .Int => try testIntegerLiteral(node, expected),
+        .Pointer, .Array => try testIdentifier(node, expected),
+        else => @compileError("Literal Expression of type {" ++ @typeName(@TypeOf(expected)) ++ "} is not handled"),
+    };
+}
+
+fn testInfixExpressions(node: *Node, left: anytype, op: ast.Operator, right: anytype) !void {
+    try testing.expectEqual(Node.Id.InfixExpression, node.id);
+
+    const expr = node.cast(Node.Id.InfixExpression).?;
+
+    try testLiteralExpressions(expr.leftExprPtr.?, left);
+
+    try testing.expectEqual(op, expr.operator);
+
+    try testLiteralExpressions(expr.rightExprPtr.?, right);
 }
