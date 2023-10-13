@@ -53,6 +53,7 @@ pub const Node = struct {
         IntegerLiteral,
         PrefixExpression,
         InfixExpression,
+        Boolean,
 
         pub fn Type(comptime id: Id) type {
             return switch (id) {
@@ -62,6 +63,7 @@ pub const Node = struct {
                 .IntegerLiteral => IntegerLiteral,
                 .PrefixExpression => PrefixExpression,
                 .InfixExpression => InfixExpression,
+                .Boolean => Boolean,
             };
         }
     };
@@ -107,6 +109,12 @@ pub const Node = struct {
         rightExprPtr: ?*Node,
     };
 
+    pub const Boolean = struct {
+        base: Node = .{ .id = .Boolean },
+        token: token.Token,
+        value: bool,
+    };
+
     pub fn cast(base: *Node, comptime id: Id) ?*id.Type() {
         if (base.id == id) {
             return @fieldParentPtr(id.Type(), "base", base);
@@ -123,10 +131,10 @@ pub const Node = struct {
         };
     }
 
-    pub fn toString(node: *const Node, writer: anytype) !void {
+    pub fn toString(node: *Node, writer: anytype) !void {
         return switch (node.id) {
             .ReturnStatement => {
-                const returnStatementNode = @fieldParentPtr(Node.ReturnStatement, "base", node);
+                const returnStatementNode = node.cast(.ReturnStatement).?;
 
                 if (returnStatementNode.returnValue) |returnValue| {
                     try writer.writeAll(returnStatementNode.token.Literal);
@@ -139,7 +147,7 @@ pub const Node = struct {
                 }
             },
             .LetStatement => {
-                const letStmtNode = @fieldParentPtr(Node.LetStatement, "base", node);
+                const letStmtNode = node.cast(.LetStatement).?;
 
                 try writer.writeAll(letStmtNode.token.Literal);
                 try writer.writeAll(" ");
@@ -150,16 +158,16 @@ pub const Node = struct {
                 try writer.writeAll(";");
             },
             .Identifier => {
-                const identifierNode = @fieldParentPtr(Identifier, "base", node);
+                const identifierNode = node.cast(.Identifier).?;
                 try writer.writeAll(identifierNode.value);
             },
             .IntegerLiteral => {
-                const integerLiteral = @fieldParentPtr(IntegerLiteral, "base", node);
+                const integerLiteral = node.cast(.IntegerLiteral).?;
 
                 try writer.print("{d}", .{integerLiteral.value});
             },
             .PrefixExpression => {
-                const prefixExpr = @fieldParentPtr(PrefixExpression, "base", node);
+                const prefixExpr = node.cast(.PrefixExpression).?;
 
                 try writer.writeAll("(");
                 try writer.writeAll(prefixExpr.operator.toString());
@@ -170,7 +178,7 @@ pub const Node = struct {
                 try writer.writeAll(")");
             },
             .InfixExpression => {
-                const infixExpr = @fieldParentPtr(InfixExpression, "base", node);
+                const infixExpr = node.cast(.InfixExpression).?;
 
                 try writer.writeAll("(");
                 if (infixExpr.leftExprPtr) |leftExpr| {
@@ -183,6 +191,11 @@ pub const Node = struct {
                     try rightExpr.toString(writer);
                 }
                 try writer.writeAll(")");
+            },
+            .Boolean => {
+                const booleanExpr = node.cast(.Boolean).?;
+
+                try writer.print("{any}", .{booleanExpr.value});
             },
         };
     }
