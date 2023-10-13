@@ -1,6 +1,6 @@
 const std = @import("std");
 const ast = @import("ast.zig");
-const lexer = @import("lexer.zig");
+const Lexer = @import("lexer.zig").Lexer;
 const token = @import("token.zig");
 const TokenType = token.TokenType;
 const Token = token.Token;
@@ -12,7 +12,7 @@ const testing = std.testing;
 // Both a namespace and Class
 // Contains Parser State
 pub const Parser = struct {
-    lex: lexer.Lexer,
+    lex: Lexer,
     curToken: Token,
     peekToken: Token,
     prefixParseFns: std.AutoHashMapUnmanaged(TokenType, prefixParseFn),
@@ -57,9 +57,9 @@ pub const Parser = struct {
     };
 
     //struct methods(Class methods not instance methods)
-    pub fn init(l: lexer.Lexer, allocator: std.mem.Allocator) Parser {
+    pub fn init(input: [:0]const u8, allocator: std.mem.Allocator) Parser {
         var p = Parser{
-            .lex = l,
+            .lex = Lexer.init(input),
             .gpa = allocator,
             .prefixParseFns = .{},
             .infixParseFns = .{},
@@ -68,6 +68,9 @@ pub const Parser = struct {
             .errors = std.ArrayList(ParserErrorContext).init(allocator),
         };
 
+        p.registerPrefix(TokenType.LPAREN, &parseGroupedExpression);
+        p.registerPrefix(TokenType.TRUE, &parseBoolean);
+        p.registerPrefix(TokenType.FALSE, &parseBoolean);
         p.registerPrefix(TokenType.IDENT, &parseIdentifier);
         p.registerPrefix(TokenType.INT, &parseIntegerLiteral);
         p.registerPrefix(TokenType.BANG, &parsePrefixExpression);
@@ -193,6 +196,18 @@ pub const Parser = struct {
         return &nodePtr.base;
     }
 
+    pub fn parseGroupedExpression(self: *Parser) !?*Node {
+        self.nextToken();
+
+        var exprPtr = (try self.parseExpression(.LOWEST)).?;
+
+        if (!self.expectPeek(TokenType.RPAREN)) {
+            return null;
+        }
+
+        return exprPtr;
+    }
+
     // Parse Literals
     pub fn parseIntegerLiteral(self: *Parser) !?*Node {
         var litPtr = try self.gpa.create(Node.IntegerLiteral);
@@ -244,6 +259,16 @@ pub const Parser = struct {
         while (!self.curTokenIs(.SEMICOLON)) : (self.nextToken()) {}
 
         return &returnStmtPtr.base;
+    }
+
+    pub fn parseBoolean(self: *Parser) !?*Node {
+        var booleanPtr = try self.gpa.create(Node.Boolean);
+
+        var value = self.curTokenIs(.TRUE);
+
+        booleanPtr.* = Node.Boolean{ .token = self.curToken, .value = value };
+
+        return &booleanPtr.base;
     }
 
     ///////////// Utilities ////////////////////////
@@ -318,10 +343,8 @@ pub const Parser = struct {
 test "initParser" {
     const input = "let five = 5;";
 
-    var lex = lexer.Lexer.init(input);
-
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    var parser = Parser.init(lex, gpa.allocator());
+    var parser = Parser.init(input, gpa.allocator());
 
     try testing.expect(parser.curToken.Type != undefined);
     try testing.expect(parser.peekToken.Type != undefined);
