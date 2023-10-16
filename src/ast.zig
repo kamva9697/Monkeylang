@@ -1,6 +1,7 @@
 const std = @import("std");
 const token = @import("token.zig");
 const TokenType = @import("token.zig").TokenType;
+const Token = @import("token.zig").Token;
 const ArrayList = std.ArrayList;
 const Parser = @import("parser.zig");
 const io = std.io;
@@ -54,6 +55,8 @@ pub const Node = struct {
         PrefixExpression,
         InfixExpression,
         Boolean,
+        IfExpression,
+        Block,
 
         pub fn Type(comptime id: Id) type {
             return switch (id) {
@@ -64,6 +67,8 @@ pub const Node = struct {
                 .PrefixExpression => PrefixExpression,
                 .InfixExpression => InfixExpression,
                 .Boolean => Boolean,
+                .IfExpression => IfExpression,
+                .Block => Block,
             };
         }
     };
@@ -71,39 +76,39 @@ pub const Node = struct {
     ////// Concrete Types ///////////////
     pub const ReturnStatement = struct {
         base: Node = .{ .id = .ReturnStatement },
-        token: token.Token,
+        token: Token,
         returnValue: ?*Node,
     };
 
     pub const LetStatement = struct {
         base: Node = .{ .id = .LetStatement },
-        token: token.Token,
+        token: Token,
         name: Identifier,
         value: ?*Node,
     };
 
     pub const Identifier = struct {
         base: Node = .{ .id = .Identifier },
-        token: token.Token,
+        token: Token,
         value: []const u8,
     };
 
     pub const IntegerLiteral = struct {
         base: Node = .{ .id = .IntegerLiteral },
-        token: token.Token,
+        token: Token,
         value: u32,
     };
 
     pub const PrefixExpression = struct {
         base: Node = .{ .id = .PrefixExpression },
-        token: token.Token,
+        token: Token,
         operator: Operator,
         rightExprPtr: ?*Node,
     };
 
     pub const InfixExpression = struct {
         base: Node = .{ .id = .InfixExpression },
-        token: token.Token,
+        token: Token,
         leftExprPtr: ?*Node,
         operator: Operator,
         rightExprPtr: ?*Node,
@@ -111,8 +116,22 @@ pub const Node = struct {
 
     pub const Boolean = struct {
         base: Node = .{ .id = .Boolean },
-        token: token.Token,
+        token: Token,
         value: bool,
+    };
+
+    pub const IfExpression = struct {
+        base: Node = .{ .id = .IfExpression },
+        token: Token,
+        condition: *Node,
+        consequence: *Block,
+        alternative: ?*Block,
+    };
+
+    pub const Block = struct {
+        base: Node = .{ .id = .Block },
+        token: Token,
+        statements: std.ArrayListUnmanaged(*Node),
     };
 
     pub fn cast(base: *Node, comptime id: Id) ?*id.Type() {
@@ -197,6 +216,25 @@ pub const Node = struct {
 
                 try writer.print("{any}", .{booleanExpr.value});
             },
+            .IfExpression => {
+                const ifExprPtr = node.cast(.IfExpression).?;
+
+                try writer.writeAll("if");
+                try ifExprPtr.condition.toString(writer);
+                try writer.writeAll(" ");
+                try (&ifExprPtr.consequence.base).toString(writer);
+
+                if (ifExprPtr.alternative) |altNode| {
+                    try writer.writeAll("else ");
+                    try (&altNode.base).toString(writer);
+                }
+            },
+            .Block => {
+                var blockNode = node.cast(.Block).?;
+                for (blockNode.statements.items) |st| {
+                    try st.toString(writer);
+                }
+            },
         };
     }
 };
@@ -227,12 +265,15 @@ test "toString" {
     var identPtr = try alloc.create(Node.Identifier);
     defer alloc.destroy(identPtr);
 
-    identPtr.* = Node.Identifier{ .token = token.Token{ .Type = .IDENT, .Literal = "anotherVar" }, .value = "anotherVar" };
+    identPtr.* = Node.Identifier{
+        .token = Token{ .Type = .IDENT, .Literal = "anotherVar" },
+        .value = "anotherVar",
+    };
 
     var statement = Node.LetStatement{
-        .token = token.Token{ .Type = .LET, .Literal = "let" },
+        .token = Token{ .Type = .LET, .Literal = "let" },
         .name = Node.Identifier{
-            .token = token.Token{ .Type = .IDENT, .Literal = "myVar" },
+            .token = Token{ .Type = .IDENT, .Literal = "myVar" },
             .value = "myVar",
         },
         .value = &identPtr.base,
@@ -254,14 +295,14 @@ test "Tree Test" {
     var buf = std.ArrayList(u8).init(allocator);
 
     var identPtr = try allocator.create(Node.Identifier);
-    identPtr.* = Node.Identifier{ .token = token.Token{ .Type = .IDENT, .Literal = "anotherVar" }, .value = "anotherVar" };
+    identPtr.* = Node.Identifier{ .token = Token{ .Type = .IDENT, .Literal = "anotherVar" }, .value = "anotherVar" };
 
     var letStmtPtr = try allocator.create(Node.LetStatement);
 
     letStmtPtr.* = Node.LetStatement{
-        .token = token.Token{ .Type = .LET, .Literal = "let" },
+        .token = Token{ .Type = .LET, .Literal = "let" },
         .name = Node.Identifier{
-            .token = token.Token{ .Type = .IDENT, .Literal = "myVar" },
+            .token = Token{ .Type = .IDENT, .Literal = "myVar" },
             .value = "myVar",
         },
         .value = &identPtr.base,
