@@ -68,6 +68,8 @@ pub const Parser = struct {
             .errors = std.ArrayList(ParserErrorContext).init(allocator),
         };
 
+        p.registerPrefix(TokenType.IF, &parseIfExpression);
+        p.registerPrefix(TokenType.TRUE, &parseBoolean);
         p.registerPrefix(TokenType.LPAREN, &parseGroupedExpression);
         p.registerPrefix(TokenType.TRUE, &parseBoolean);
         p.registerPrefix(TokenType.FALSE, &parseBoolean);
@@ -119,6 +121,7 @@ pub const Parser = struct {
             // let statement
             .LET => try self.parseLetStatement(),
             .RETURN => try self.parseReturnStatement(),
+
             else => try self.parseExpression(.LOWEST),
         };
     }
@@ -201,7 +204,7 @@ pub const Parser = struct {
 
         var exprPtr = (try self.parseExpression(.LOWEST)).?;
 
-        if (!self.expectPeek(TokenType.RPAREN)) {
+        if (!(try self.expectPeek(TokenType.RPAREN))) {
             return null;
         }
 
@@ -209,16 +212,80 @@ pub const Parser = struct {
     }
 
     // Parse Literals
+    pub fn parseFunctionLiterals(self: *Parser) !?*Node {
+        _ = self;
+    }
+
     pub fn parseIntegerLiteral(self: *Parser) !?*Node {
         var litPtr = try self.gpa.create(Node.IntegerLiteral);
 
         litPtr.* = Node.IntegerLiteral{ .token = self.curToken, .value = undefined };
 
-        litPtr.value = std.fmt.parseInt(u32, litPtr.token.Literal, 10) catch |err| {
-            std.debug.panic("Error: {any} could not parse {any} as integer", .{ err, self.curToken });
-        };
+        litPtr.value = try std.fmt.parseInt(u32, litPtr.token.Literal, 10);
 
         return &litPtr.base;
+    }
+
+    pub fn parseIfExpression(self: *Parser) !?*Node {
+        var ifExprPtr = try self.gpa.create(Node.IfExpression);
+
+        ifExprPtr.* = Node.IfExpression{
+            .token = self.curToken,
+            .condition = undefined,
+            .consequence = undefined,
+            .alternative = null,
+        };
+
+        if (!(try self.expectPeek(TokenType.LPAREN))) {
+            return null;
+        }
+
+        ifExprPtr.condition = (try self.parseExpression(.LOWEST)).?;
+
+        // Is the RParen part of a grouped expression?
+        // if (!(try self.expectPeek(TokenType.RPAREN))) {
+        //     return null;
+        // }
+
+        if (!(try self.expectPeek(TokenType.LBRACE))) {
+            return null;
+        }
+        var blockNode = (try self.parseBlockStatement()).?;
+
+        ifExprPtr.consequence = blockNode.cast(.Block).?;
+
+        if (self.peekTokenIs(TokenType.ELSE)) {
+            self.nextToken();
+
+            if (!self.peekTokenIs(TokenType.RBRACE)) {
+                return null;
+            }
+
+            var altNode = (try self.parseBlockStatement()).?;
+            ifExprPtr.alternative = altNode.cast(.Block).?;
+        }
+
+        return &ifExprPtr.base;
+    }
+
+    pub fn parseBlockStatement(self: *Parser) !?*Node {
+        var blockPtr = try self.gpa.create(Node.Block);
+
+        blockPtr.* = Node.Block{
+            .token = self.curToken,
+            .statements = .{},
+        };
+
+        self.nextToken();
+
+        while (!self.curTokenIs(TokenType.RBRACE) and !self.curTokenIs(TokenType.EOF)) {
+            var stmt = try self.parseStatement();
+            if (stmt) |st| {
+                try blockPtr.statements.append(self.gpa, st);
+            }
+            self.nextToken();
+        }
+        return &blockPtr.base;
     }
 
     // Parse Statements
@@ -231,13 +298,13 @@ pub const Parser = struct {
             .name = undefined,
         };
 
-        if (!self.expectPeek(.IDENT)) {
+        if (!(try self.expectPeek(.IDENT))) {
             return null;
         }
 
         letStmtPtr.name = Node.Identifier{ .token = self.curToken, .value = self.curToken.Literal };
 
-        if (!self.expectPeek(.ASSIGN)) {
+        if (!(try self.expectPeek(.ASSIGN))) {
             return null;
         }
 
@@ -287,24 +354,20 @@ pub const Parser = struct {
         return self.peekToken.Type == tok;
     }
 
-    pub inline fn expectPeek(self: *Parser, tok: TokenType) bool {
+    pub inline fn expectPeek(self: *Parser, tok: TokenType) !bool {
         if (self.peekTokenIs(tok)) {
             self.nextToken();
             return true;
         }
-        self.peekError(tok);
+        try self.peekError(tok);
         return false;
     }
 
-    pub inline fn peekError(self: *Parser, tok: TokenType) void {
-        var msg = std.fmt.allocPrint(self.gpa, "Expected next token to be {any} got '{any}' instead", .{ tok, self.peekToken.Type }) catch |err| {
-            std.debug.panic("peekError01: Out of Memory {any}", .{err});
-        };
+    pub inline fn peekError(self: *Parser, tok: TokenType) !void {
+        var msg = try std.fmt.allocPrint(self.gpa, "Expected next token to be {any} got '{any}' instead", .{ tok, self.peekToken.Type });
 
         var ctx: ParserErrorContext = .{ .err = ParserError.UnexpectedToken, .msg = msg };
-        self.errors.append(ctx) catch |err| {
-            std.debug.panic("peekError: Out of Memory: {any}", .{err});
-        };
+        try self.errors.append(ctx);
     }
 
     pub fn registerPrefix(self: *Parser, currentToken: TokenType, prefixFunc: prefixParseFn) void {
@@ -326,9 +389,7 @@ pub const Parser = struct {
 
         errCtx.msg = msg;
 
-        self.errors.append(errCtx) catch {
-            std.debug.panic("Errors: Out of M", .{});
-        };
+        try self.errors.append(errCtx);
     }
 
     // Destructor

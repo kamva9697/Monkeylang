@@ -7,66 +7,30 @@ const Node = ast.Node;
 const TokenType = token.TokenType;
 const testing = std.testing;
 
+/// Global Allocator
 var gpa = std.heap.GeneralPurposeAllocator(.{}){};
 var allocator = std.heap.ArenaAllocator.init(gpa.allocator());
 var alloc = allocator.allocator(); // the ast Test Deallocates
 
 test "Parser Error" {
-    const input =
-        \\let x = 5;
-        \\let y = 10;
-        \\let foobar = 838383;
-    ;
+    const input = "let = 5";
     var p = Parser.init(input, allocator.allocator());
-
-    try testing.expectEqual(p.errors.items.len, 0);
+    checkParserErrors(&p);
 }
 
 test "ParseLetStatements" {
-    const input = "let x = 5;\nlet y = 10;\nlet foobar = 838383;";
-
-    var p = Parser.init(input, allocator.allocator());
-
-    const program = try p.parseProgram();
-    // defer program.deinit();
-
-    const tests = [_][]const u8{
-        "x",
-        "y",
-        "foobar",
-    };
-
-    try testing.expectEqual(program.statements.items.len, tests.len);
-
-    for (tests, 0..) |tc, i| {
-        var node = program.statements.items[i];
-        try testing.expectEqual(Node.Id.LetStatement, node.id);
-        try testing.expectEqual(TokenType.LET, node.tokenType());
-        const letNode = @fieldParentPtr(Node.LetStatement, "base", node);
-        try testing.expectEqualStrings(tc, letNode.*.name.value);
-    }
+    try testLetStatements(
+        "let x = 5;\nlet y = 10;\nlet foobar = 838383;",
+        [3][]const u8{
+            "x",
+            "y",
+            "foobar",
+        },
+    );
 }
 
 test "ParseReturnStatements" {
-    const tests = [_]struct {
-        input: [:0]const u8,
-        expectedValue: []const u8,
-    }{
-        .{ .input = "return 5;", .expectedValue = "5" },
-        .{ .input = "return true;", .expectedValue = "true" },
-        .{ .input = "return foobar;", .expectedValue = "foobar" },
-    };
-    for (tests) |tc| {
-        var p = Parser.init(tc.input, allocator.allocator());
-
-        const program = try p.parseProgram();
-
-        std.debug.assert(program.statements.items.len == 1);
-
-        var node = program.statements.items[0];
-
-        try testing.expectEqual(Node.Id.ReturnStatement, node.id);
-    }
+    try testReturnStatement();
 }
 
 test "IdentifierExpression" {
@@ -85,62 +49,208 @@ test "PrefixTests" {
 }
 
 test "InfixTests" {
-    try InfixTest(u32).run("5 + 5;", 5, .plus, 5);
-    try InfixTest(u32).run("5 - 5;", 5, .minus, 5);
-    try InfixTest(u32).run("5 * 5;", 5, .multiply, 5);
-    try InfixTest(u32).run("5 / 5;", 5, .divide, 5);
-    try InfixTest(u32).run("5 > 5;", 5, .greater_than, 5);
-    try InfixTest(u32).run("5 < 5;", 5, .less_than, 5);
-    try InfixTest(u32).run("5 == 5;", 5, .equal_to, 5);
-    try InfixTest(u32).run("5 !=5;", 5, .not_equal_to, 5);
-    try InfixTest(bool).run("true == true;", true, .equal_to, true);
-    try InfixTest(bool).run("true != false;", true, .not_equal_to, false);
-    try InfixTest(bool).run("false != false;", false, .not_equal_to, false);
+    try InfixTest(u32).run(
+        "5 + 5;",
+        5,
+        .plus,
+        5,
+    );
+    try InfixTest(u32).run(
+        "5 - 5;",
+        5,
+        .minus,
+        5,
+    );
+    try InfixTest(u32).run(
+        "5 * 5;",
+        5,
+        .multiply,
+        5,
+    );
+    try InfixTest(u32).run(
+        "5 / 5;",
+        5,
+        .divide,
+        5,
+    );
+    try InfixTest(u32).run(
+        "5 > 5;",
+        5,
+        .greater_than,
+        5,
+    );
+    try InfixTest(u32).run(
+        "5 < 5;",
+        5,
+        .less_than,
+        5,
+    );
+    try InfixTest(u32).run(
+        "5 == 5;",
+        5,
+        .equal_to,
+        5,
+    );
+    try InfixTest(u32).run(
+        "5 !=5;",
+        5,
+        .not_equal_to,
+        5,
+    );
+    try InfixTest(bool).run(
+        "true == true;",
+        true,
+        .equal_to,
+        true,
+    );
+    try InfixTest(bool).run(
+        "true != false;",
+        true,
+        .not_equal_to,
+        false,
+    );
+    try InfixTest(bool).run(
+        "false != false;",
+        false,
+        .not_equal_to,
+        false,
+    );
 }
 
 test "ToString" {
-    try ToStringTest([:0]const u8).run("-a * b", "((-a) * b)");
-    try ToStringTest([:0]const u8).run("!-a", "(!(-a))");
-    try ToStringTest([:0]const u8).run("a + b + c", "((a + b) + c)");
-    try ToStringTest([:0]const u8).run("a + b - c", "((a + b) - c)");
-    try ToStringTest([:0]const u8).run("a * b * c", "((a * b) * c)");
-    try ToStringTest([:0]const u8).run("a * b / c", "((a * b) / c)");
-    try ToStringTest([:0]const u8).run("a + b / c", "(a + (b / c))");
-    try ToStringTest([:0]const u8).run("a + b * c + d / e - f", "(((a + (b * c)) + (d / e)) - f)");
-    try ToStringTest([:0]const u8).run("5 > 4 == 3 < 4", "((5 > 4) == (3 < 4))");
-    try ToStringTest([:0]const u8).run("5 < 4 != 3 > 4", "((5 < 4) != (3 > 4))");
-    try ToStringTest([:0]const u8).run("3 + 4 * 5 == 3 * 1 + 4 * 5", "((3 + (4 * 5)) == ((3 * 1) + (4 * 5)))");
+    try ToStringTest(
+        "-a * b",
+        "((-a) * b)",
+    );
+    try ToStringTest(
+        "!-a",
+        "(!(-a))",
+    );
+    try ToStringTest(
+        "a + b + c",
+        "((a + b) + c)",
+    );
+    try ToStringTest(
+        "a + b - c",
+        "((a + b) - c)",
+    );
+    try ToStringTest(
+        "a * b * c",
+        "((a * b) * c)",
+    );
+    try ToStringTest(
+        "a * b / c",
+        "((a * b) / c)",
+    );
+    try ToStringTest(
+        "a + b / c",
+        "(a + (b / c))",
+    );
+    try ToStringTest(
+        "a + b * c + d / e - f",
+        "(((a + (b * c)) + (d / e)) - f)",
+    );
+    try ToStringTest(
+        "5 > 4 == 3 < 4",
+        "((5 > 4) == (3 < 4))",
+    );
+    try ToStringTest(
+        "5 < 4 != 3 > 4",
+        "((5 < 4) != (3 > 4))",
+    );
+    try ToStringTest(
+        "3 + 4 * 5 == 3 * 1 + 4 * 5",
+        "((3 + (4 * 5)) == ((3 * 1) + (4 * 5)))",
+    );
     // No precedence for ';', thus this should
     // be parsed as two different statements not one.
-    // try ToStringTest([:0]const u8).run("3 + 4; -5 * 5", "(3 + 4)((-5) * 5)");
-    try ToStringTest([:0]const u8).run("true", "true");
-    try ToStringTest([:0]const u8).run("false", "false");
-    try ToStringTest([:0]const u8).run("3 > 5 == false", "((3 > 5) == false)");
-    try ToStringTest([:0]const u8).run("3 < 5 == true", "((3 < 5) == true)");
-    try ToStringTest([:0]const u8).run("1 + (2 + 3) + 4", "((1 + (2 + 3)) + 4)");
-    try ToStringTest([:0]const u8).run("(5 + 5) * 2", "((5 + 5) * 2)");
-    try ToStringTest([:0]const u8).run("2 / (5 + 5)", "(2 / (5 + 5))");
-    try ToStringTest([:0]const u8).run("-(5 + 5)", "(-(5 + 5))");
-    try ToStringTest([:0]const u8).run("!(true == true)", "(!(true == true))");
+    // try ToStringTest([:0]const u8"3 + 4; -5 * 5", "(3 + 4)((-5) * 5)",);
+    try ToStringTest(
+        "true",
+        "true",
+    );
+    try ToStringTest(
+        "false",
+        "false",
+    );
+    try ToStringTest(
+        "3 > 5 == false",
+        "((3 > 5) == false)",
+    );
+    try ToStringTest(
+        "3 < 5 == true",
+        "((3 < 5) == true)",
+    );
+    try ToStringTest(
+        "1 + (2 + 3) + 4",
+        "((1 + (2 + 3)) + 4)",
+    );
+    try ToStringTest(
+        "(5 + 5) * 2",
+        "((5 + 5) * 2)",
+    );
+    try ToStringTest(
+        "2 / (5 + 5)",
+        "(2 / (5 + 5))",
+    );
+    try ToStringTest(
+        "-(5 + 5)",
+        "(-(5 + 5))",
+    );
+    try ToStringTest(
+        "!(true == true)",
+        "(!(true == true))",
+    );
+    try ToStringTest(
+        "x + y)",
+        "(x + y)",
+    );
 }
+
+test "IfExpressions" {
+    try IfExpressionTest("if (x < y) { x }");
+}
+
 ////////// Helpers /////////////////////////
-pub fn ToStringTest(comptime T: type) type {
-    return struct {
-        pub fn run(comptime input: T, comptime expected: []const u8) !void {
-            var buf = std.ArrayList(u8).init(alloc);
-            defer buf.deinit();
+pub fn IfExpressionTest(comptime input: [:0]const u8) !void {
+    var par = Parser.init(input, alloc);
 
-            var par = Parser.init(input, alloc);
+    var program = try par.parseProgram();
+    checkParserErrors(&par);
 
-            var program = try par.parseProgram();
+    try testing.expectEqual(@as(usize, 1), program.statements.items.len);
 
-            try program.toString(buf.writer());
+    // assert
+    var node = program.statements.items[0];
 
-            try testing.expectEqualStrings(expected, buf.items);
+    try testing.expectEqual(Node.Id.IfExpression, node.id);
 
-            buf.clearRetainingCapacity();
-        }
-    };
+    var expr = node.cast(.IfExpression).?;
+
+    try testInfixExpression([]const u8, expr.condition, "x", .less_than, "y");
+
+    try testing.expectEqual(@as(usize, 1), expr.consequence.statements.items.len);
+
+    var conseq = expr.consequence.statements.items[0];
+
+    try testLiteralExpressions([]const u8, conseq, "x");
+
+    try testing.expect(expr.alternative == null);
+}
+
+pub fn ToStringTest(comptime input: [:0]const u8, comptime expected: []const u8) !void {
+    var buf = std.ArrayList(u8).init(alloc);
+    defer buf.deinit();
+
+    var par = Parser.init(input, alloc);
+
+    var program = try par.parseProgram();
+
+    try program.toString(buf.writer());
+
+    try testing.expectEqualStrings(expected, buf.items);
+
+    buf.clearRetainingCapacity();
 }
 
 pub fn IdentifierLiteralTest(comptime T: type) type {
@@ -202,7 +312,7 @@ fn testLiteralExpressions(comptime T: type, node: *Node, comptime val: T) !void 
     };
 }
 
-fn testInfixExpressions(comptime T: type, node: *Node, comptime left: T, comptime op: ast.Operator, comptime right: T) !void {
+fn testInfixExpression(comptime T: type, node: *Node, comptime left: T, comptime op: ast.Operator, comptime right: T) !void {
     try testing.expectEqual(Node.Id.InfixExpression, node.id);
 
     const expr = node.cast(Node.Id.InfixExpression).?;
@@ -257,7 +367,54 @@ pub fn InfixTest(comptime T: type) type {
             const node = program.statements.items[0];
 
             // assert
-            try testInfixExpressions(T, node, left, op, right);
+            try testInfixExpression(T, node, left, op, right);
         }
     };
+}
+
+pub fn testLetStatements(comptime input: [:0]const u8, comptime expected: [3][]const u8) !void {
+    var p = Parser.init(input, allocator.allocator());
+
+    checkParserErrors(&p);
+
+    const program = try p.parseProgram();
+    try testing.expectEqual(program.statements.items.len, expected.len);
+
+    for (expected, 0..) |tc, i| {
+        var node = program.statements.items[i];
+        try testing.expectEqual(Node.Id.LetStatement, node.id);
+        try testing.expectEqual(TokenType.LET, node.tokenType());
+        const letNode = @fieldParentPtr(Node.LetStatement, "base", node);
+        try testing.expectEqualStrings(tc, letNode.*.name.value);
+    }
+}
+fn testReturnStatement() !void {
+    const tests = [_]struct {
+        input: [:0]const u8,
+        expectedValue: []const u8,
+    }{
+        .{ .input = "return 5;", .expectedValue = "5" },
+        .{ .input = "return true;", .expectedValue = "true" },
+        .{ .input = "return foobar;", .expectedValue = "foobar" },
+    };
+    for (tests) |tc| {
+        var p = Parser.init(tc.input, allocator.allocator());
+
+        const program = try p.parseProgram();
+
+        std.debug.assert(program.statements.items.len == 1);
+
+        var node = program.statements.items[0];
+
+        try testing.expectEqual(Node.Id.ReturnStatement, node.id);
+    }
+}
+
+fn checkParserErrors(parser: *Parser) void {
+    if (parser.errors.items.len == 0) return;
+
+    for (parser.errors.items, 0..) |err, i| {
+        std.log.err("[{d}] {any}: {s}", .{ i, err.err, err.msg });
+    }
+    std.debug.panic("There are {d} parser errors", .{parser.errors.items.len});
 }
