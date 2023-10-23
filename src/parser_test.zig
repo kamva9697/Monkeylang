@@ -20,12 +20,22 @@ test "Parser Error" {
 
 test "ParseLetStatements" {
     try testLetStatements(
-        "let x = 5;\nlet y = 10;\nlet foobar = 838383;",
-        [3][]const u8{
-            "x",
-            "y",
-            "foobar",
-        },
+        u32,
+        "let x = 5;",
+        "x",
+        5,
+    );
+    try testLetStatements(
+        bool,
+        "let y = true;",
+        "y",
+        true,
+    );
+    try testLetStatements(
+        []const u8,
+        "let foobar = y;",
+        "foobar",
+        "y",
     );
 }
 
@@ -117,7 +127,19 @@ test "InfixTests" {
     );
 }
 
-test "ToString" {
+test "Precedence-ToString" {
+    try ToStringTest(
+        "a + add(b * c) + d",
+        "((a + add((b * c))) + d)",
+    );
+    try ToStringTest(
+        "add(a, b, 1, 2 * 3, 4 + 5, add(6, 7 * 8))",
+        "add(a, b, 1, (2 * 3), (4 + 5), add(6, (7 * 8)))",
+    );
+    try ToStringTest(
+        "add(a + b + c * d / f + g)",
+        "add((((a + b) + ((c * d) / f)) + g))",
+    );
     try ToStringTest(
         "-a * b",
         "((-a) * b)",
@@ -211,7 +233,98 @@ test "IfExpressions" {
     try IfExpressionTest("if (x < y) { x }");
 }
 
+test "FunctionLiterals" {
+    try FunctionLiteralTest("fn(x, y) { x + y; }");
+}
+
+test "FunctionParameterTest" {
+    const expected: []const []const []const u8 = &.{
+        &.{},
+        &.{"x"},
+        &.{ "x", "y", "z" },
+    };
+
+    try FunctionParameterTest("fn() {}", expected[0]);
+    try FunctionParameterTest("fn(x) {}", expected[1]);
+    try FunctionParameterTest("fn(x, y, z) {}", expected[2]);
+}
+
+test "CallExpressionsTest" {
+    try CallExpressionTest("add(1, 2 * 3, 4 + 5);");
+}
+
 ////////// Helpers /////////////////////////
+pub fn CallExpressionTest(comptime input: [:0]const u8) !void {
+    var par = Parser.init(input, alloc);
+
+    var program = try par.parseProgram();
+    // checkParserErrors(&par);
+
+    try testing.expectEqual(program.statements.items.len, @as(usize, 1));
+
+    var node = program.statements.items[0];
+    var callExprNode = node.cast(.CallExpression).?;
+
+    try testIdentifierLiteral(callExprNode.function, "add");
+
+    try testing.expectEqual(@as(usize, 3), callExprNode.arguments.len);
+
+    var args = callExprNode.arguments;
+
+    try testLiteralExpressions(u32, args[0], 1);
+    try testInfixExpression(u32, args[1], 2, .multiply, 3);
+    try testInfixExpression(u32, args[2], 4, .plus, 5);
+}
+
+pub fn FunctionParameterTest(
+    comptime input: [:0]const u8,
+    comptime expected: []const []const u8,
+) !void {
+    var par = Parser.init(input, alloc);
+
+    var program = try par.parseProgram();
+    // checkParserErrors(&par);
+
+    var node = program.statements.items[0];
+    var functionParams = node.cast(.FunctionLiteral).?;
+
+    try testing.expectEqual(expected.len, functionParams.parameters.len);
+
+    for (expected, 0..) |tc, i| {
+        try testIdentifierLiteral(&functionParams.parameters[i].base, tc);
+    }
+}
+
+pub fn FunctionLiteralTest(comptime input: [:0]const u8) !void {
+    var par = Parser.init(input, alloc);
+
+    var program = try par.parseProgram();
+    // checkParserErrors(&par);
+
+    //assert
+    try testing.expectEqual(@as(usize, 1), program.statements.items.len);
+
+    var node = program.statements.items[0];
+
+    var funcLitNode = node.cast(.FunctionLiteral).?;
+
+    try testing.expectEqual(Node.Id.FunctionLiteral, funcLitNode.base.id);
+
+    try testing.expectEqual(@as(usize, 2), funcLitNode.parameters.len);
+
+    if (funcLitNode.parameters.len != 0) {
+        try testLiteralExpressions([]const u8, &funcLitNode.parameters[0].base, "x");
+        try testLiteralExpressions([]const u8, &funcLitNode.parameters[1].base, "y");
+    }
+
+    try testing.expectEqual(@as(usize, 1), funcLitNode.body.statements.items.len);
+
+    const bodyStmt = funcLitNode.body.statements.items[0];
+    try testing.expectEqual(Node.Id.InfixExpression, bodyStmt.id);
+
+    try testInfixExpression([]const u8, bodyStmt, "x", .plus, "y");
+}
+
 pub fn IfExpressionTest(comptime input: [:0]const u8) !void {
     var par = Parser.init(input, alloc);
 
@@ -292,7 +405,7 @@ fn testIdentifierLiteral(node: *Node, val: []const u8) !void {
 fn testIntegerLiteral(node: *Node, value: u32) !void {
     var buf: [1024]u8 = undefined;
 
-    const stmt = Node.cast(node, Node.Id.IntegerLiteral).?;
+    const stmt = node.cast(.IntegerLiteral).?;
 
     try testing.expectEqual(Node.IntegerLiteral, @TypeOf(stmt.*));
 
@@ -357,7 +470,12 @@ pub fn PrefixTest(comptime T: type) type {
 
 pub fn InfixTest(comptime T: type) type {
     return struct {
-        pub fn run(comptime input: [:0]const u8, comptime left: T, comptime op: ast.Operator, comptime right: T) !void {
+        pub fn run(
+            comptime input: [:0]const u8,
+            comptime left: T,
+            comptime op: ast.Operator,
+            comptime right: T,
+        ) !void {
             var par = Parser.init(input, alloc);
 
             var program = try par.parseProgram();
@@ -372,21 +490,28 @@ pub fn InfixTest(comptime T: type) type {
     };
 }
 
-pub fn testLetStatements(comptime input: [:0]const u8, comptime expected: [3][]const u8) !void {
+pub fn testLetStatements(
+    comptime T: type,
+    comptime input: [:0]const u8,
+    comptime expectedIdentifier: []const u8,
+    comptime expectedValue: T,
+) !void {
     var p = Parser.init(input, allocator.allocator());
 
     checkParserErrors(&p);
 
     const program = try p.parseProgram();
-    try testing.expectEqual(program.statements.items.len, expected.len);
+    try testing.expectEqual(program.statements.items.len, @as(usize, 1));
 
-    for (expected, 0..) |tc, i| {
-        var node = program.statements.items[i];
-        try testing.expectEqual(Node.Id.LetStatement, node.id);
-        try testing.expectEqual(TokenType.LET, node.tokenType());
-        const letNode = @fieldParentPtr(Node.LetStatement, "base", node);
-        try testing.expectEqualStrings(tc, letNode.*.name.value);
-    }
+    var node = program.statements.items[0];
+    try testing.expectEqual(Node.Id.LetStatement, node.id);
+    try testing.expectEqual(TokenType.LET, node.tokenType());
+
+    const letNode = @fieldParentPtr(Node.LetStatement, "base", node);
+
+    try testing.expectEqualStrings(expectedIdentifier, letNode.name.value);
+
+    try testLiteralExpressions(T, letNode.value.?, expectedValue);
 }
 fn testReturnStatement() !void {
     const tests = [_]struct {
