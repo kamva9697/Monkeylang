@@ -57,6 +57,8 @@ pub const Node = struct {
         Boolean,
         IfExpression,
         Block,
+        FunctionLiteral,
+        CallExpression,
 
         pub fn Type(comptime id: Id) type {
             return switch (id) {
@@ -69,6 +71,8 @@ pub const Node = struct {
                 .Boolean => Boolean,
                 .IfExpression => IfExpression,
                 .Block => Block,
+                .FunctionLiteral => FunctionLiteral,
+                .CallExpression => CallExpression,
             };
         }
     };
@@ -132,6 +136,21 @@ pub const Node = struct {
         base: Node = .{ .id = .Block },
         token: Token,
         statements: std.ArrayListUnmanaged(*Node),
+    };
+
+    pub const FunctionLiteral = struct {
+        base: Node = .{ .id = .FunctionLiteral },
+        token: Token,
+        // limit parameter list to 127
+        parameters: []*Identifier,
+        body: *Block,
+    };
+
+    pub const CallExpression = struct {
+        base: Node = .{ .id = .CallExpression },
+        token: Token,
+        function: *Node,
+        arguments: []*Node,
     };
 
     pub fn cast(base: *Node, comptime id: Id) ?*id.Type() {
@@ -234,6 +253,32 @@ pub const Node = struct {
                 for (blockNode.statements.items) |st| {
                     try st.toString(writer);
                 }
+            },
+            .FunctionLiteral => {
+                var functionLiteralNode = node.cast(.FunctionLiteral).?;
+
+                try writer.writeAll(functionLiteralNode.token.Literal);
+                try writer.writeAll("(");
+
+                for (functionLiteralNode.parameters) |params| {
+                    try writer.print("{s}, ", .{params.value});
+                }
+                try writer.writeAll(") ");
+
+                try (&functionLiteralNode.body.base).toString(writer);
+            },
+            .CallExpression => {
+                var callExpressionNode = node.cast(.CallExpression).?;
+
+                try callExpressionNode.function.toString(writer);
+                try writer.writeAll("(");
+                for (callExpressionNode.arguments, 0..) |arg, i| {
+                    try arg.toString(writer);
+                    if (callExpressionNode.arguments.len != i + 1) {
+                        try writer.writeAll(", ");
+                    }
+                }
+                try writer.writeAll(")");
             },
         };
     }

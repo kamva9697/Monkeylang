@@ -24,7 +24,8 @@ pub const Parser = struct {
     pub const prefixParseFn = *const fn (*Parser) anyerror!?*Node;
     pub const infixParseFn = *const fn (*Parser, ?*Node) anyerror!?*Node;
 
-    pub const ParserError = error{ NoPrefixParseFn, UnexpectedToken };
+    // TODO: Improve handling of Parser Errors
+    pub const ParserError = error{ NoPrefixParseFn, UnexpectedToken, ParameterListTooLong };
 
     pub const ParserErrorContext = struct {
         err: ParserError,
@@ -68,6 +69,8 @@ pub const Parser = struct {
             .errors = std.ArrayList(ParserErrorContext).init(allocator),
         };
 
+        p.registerInfix(TokenType.LPAREN, &parseCallExpression);
+        p.registerPrefix(TokenType.FUNCTION, &parseFunctionLiteral);
         p.registerPrefix(TokenType.IF, &parseIfExpression);
         p.registerPrefix(TokenType.TRUE, &parseBoolean);
         p.registerPrefix(TokenType.LPAREN, &parseGroupedExpression);
@@ -212,8 +215,74 @@ pub const Parser = struct {
     }
 
     // Parse Literals
-    pub fn parseFunctionLiterals(self: *Parser) !?*Node {
-        _ = self;
+    pub fn parseFunctionLiteral(self: *Parser) !?*Node {
+        var lit = try self.gpa.create(Node.FunctionLiteral);
+
+        lit.* = Node.FunctionLiteral{
+            .token = self.curToken,
+            .parameters = undefined,
+            .body = undefined,
+        };
+
+        if (!(try self.expectPeek(.LPAREN))) {
+            return null;
+        }
+
+        lit.parameters = (try self.parseFunctionParameters()).?;
+
+        if (!(try self.expectPeek(.LBRACE))) {
+            return null;
+        }
+
+        var bodyNode = (try self.parseBlockStatement()).?;
+
+        lit.body = bodyNode.cast(.Block).?;
+
+        return &lit.base;
+    }
+
+    pub fn parseFunctionParameters(self: *Parser) !?[]*Node.Identifier {
+        var identifiers = try std.ArrayList(*Node.Identifier).initCapacity(self.gpa, 128);
+
+        if (self.peekTokenIs(.RPAREN)) {
+            self.nextToken();
+            return try identifiers.toOwnedSlice();
+        }
+        self.nextToken();
+
+        //first Identifier
+        var ident = try self.gpa.create(Node.Identifier);
+        ident.* = Node.Identifier{
+            .token = self.curToken,
+            .value = self.curToken.Literal,
+        };
+
+        try identifiers.append(ident);
+
+        while (self.peekTokenIs(.COMMA)) {
+            self.nextToken();
+            self.nextToken();
+            ident = try self.gpa.create(Node.Identifier);
+            ident.* = Node.Identifier{
+                .token = self.curToken,
+                .value = self.curToken.Literal,
+            };
+            try identifiers.append(ident);
+        }
+
+        if (!(try self.expectPeek(.RPAREN))) {
+            return null;
+        }
+        // Assert Parameter limit is 127
+        if (identifiers.items.len > 127) {
+            var ctx: ParserErrorContext = .{
+                .err = ParserError.ParameterListTooLong,
+                .msg = "Paramter List Limit is 127",
+            };
+            try self.errors.append(ctx);
+        }
+
+        return try identifiers.toOwnedSlice();
     }
 
     pub fn parseIntegerLiteral(self: *Parser) !?*Node {
@@ -268,6 +337,42 @@ pub const Parser = struct {
         return &ifExprPtr.base;
     }
 
+    pub fn parseCallExpression(self: *Parser, func: ?*Node) !?*Node {
+        var expr = try self.gpa.create(Node.CallExpression);
+        expr.* = Node.CallExpression{
+            .token = self.curToken,
+            .function = func.?,
+            .arguments = (try self.parseCallArguments()).?,
+        };
+
+        return &expr.base;
+    }
+
+    pub fn parseCallArguments(self: *Parser) !?[]*Node {
+        var args = std.ArrayList(*Node).init(self.gpa);
+
+        if (self.peekTokenIs(.RPAREN)) {
+            self.nextToken();
+            return try args.toOwnedSlice();
+        }
+
+        self.nextToken();
+
+        try args.append((try self.parseExpression(.LOWEST)).?);
+
+        while (self.peekTokenIs(.COMMA)) {
+            self.nextToken();
+            self.nextToken();
+            try args.append((try self.parseExpression(.LOWEST)).?);
+        }
+
+        if (!(try self.expectPeek(.RPAREN))) {
+            return null;
+        }
+
+        return try args.toOwnedSlice();
+    }
+
     pub fn parseBlockStatement(self: *Parser) !?*Node {
         var blockPtr = try self.gpa.create(Node.Block);
 
@@ -308,9 +413,12 @@ pub const Parser = struct {
             return null;
         }
 
-        // TODO: We're skipping the expressions until we
-        // encounter a semicolon
-        while (!self.curTokenIs(.SEMICOLON)) : (self.nextToken()) {}
+        self.nextToken();
+
+        letStmtPtr.value = (try self.parseExpression(.LOWEST)).?;
+        if (self.peekTokenIs(.SEMICOLON)) {
+            self.nextToken();
+        }
 
         return &letStmtPtr.base;
     }
@@ -320,10 +428,13 @@ pub const Parser = struct {
 
         returnStmtPtr.* = Node.ReturnStatement{ .token = self.curToken, .returnValue = null };
 
-        // TODO: Evaluate Expressions, For now,
-        // We're skipping the expressions until we
-        // encounter a semicolon
-        while (!self.curTokenIs(.SEMICOLON)) : (self.nextToken()) {}
+        self.nextToken();
+
+        returnStmtPtr.returnValue = (try self.parseExpression(.LOWEST)).?;
+
+        if (self.peekTokenIs(.SEMICOLON)) {
+            self.nextToken();
+        }
 
         return &returnStmtPtr.base;
     }
@@ -366,7 +477,10 @@ pub const Parser = struct {
     pub inline fn peekError(self: *Parser, tok: TokenType) !void {
         var msg = try std.fmt.allocPrint(self.gpa, "Expected next token to be {any} got '{any}' instead", .{ tok, self.peekToken.Type });
 
-        var ctx: ParserErrorContext = .{ .err = ParserError.UnexpectedToken, .msg = msg };
+        var ctx: ParserErrorContext = .{
+            .err = ParserError.UnexpectedToken,
+            .msg = msg,
+        };
         try self.errors.append(ctx);
     }
 
