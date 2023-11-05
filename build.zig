@@ -4,6 +4,9 @@ pub fn build(b: *std.build.Builder) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
+    const use_llvm = b.option(bool, "use-llvm", "Use llvm Backend") orelse
+        !(target.getCpuArch() == .x86_64 and target.getObjectFormat() == .elf);
+
     const exe = b.addExecutable(.{
         .name = "monkey",
         .root_source_file = .{ .path = "src/main.zig" },
@@ -11,6 +14,8 @@ pub fn build(b: *std.build.Builder) void {
         .optimize = optimize,
     });
 
+    exe.use_llvm = use_llvm;
+    exe.use_lld = use_llvm;
     b.installArtifact(exe);
 
     const run_cmd = b.addRunArtifact(exe);
