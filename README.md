@@ -1,4 +1,4 @@
-![logo-color](https://github.com/kamva9697/Monkeylang/assets/13321065/9ae3e754-60ad-423c-b4d3-f5d35ed73e54)
+<img src= "https://github.com/kamva9697/Monkeylang/assets/13321065/9ae3e754-60ad-423c-b4d3-f5d35ed73e54" alt="MonkeyLogo" width="200" height="200">
 
 Development of the Monkey programming language with [zig](https://www.ziglang.org/) based on *Writing an Interpreter with Go by Thorsten Ball*
 
