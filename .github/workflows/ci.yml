@@ -15,11 +15,10 @@ jobs:
         os: [ubuntu-latest, windows-latest]
     runs-on: ${{matrix.os}}
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
       - uses: goto-bus-stop/setup-zig@v2
-        with:
-          version: 0.11.0
       - run: zig build test
+      - run: zig build
   lint:
     runs-on: ubuntu-latest
     steps:
