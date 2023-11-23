@@ -132,7 +132,7 @@ pub const Parser = struct {
     pub fn parseExpression(self: *Parser, prec: Precedence) !?*Node {
         var leftExprNode: ?*Node = null;
 
-        var prefixFn = self.prefixParseFns.get(self.curToken.Type);
+        const prefixFn = self.prefixParseFns.get(self.curToken.Type);
 
         if (prefixFn) |unwrapped_prefixFn| {
             leftExprNode = try unwrapped_prefixFn(self);
@@ -143,7 +143,7 @@ pub const Parser = struct {
         }
 
         while (!self.peekTokenIs(TokenType.SEMICOLON) and @intFromEnum(prec) < @intFromEnum(self.peekPrecedence())) {
-            var infix = self.infixParseFns.get(self.peekToken.Type);
+            const infix = self.infixParseFns.get(self.peekToken.Type);
             if (infix) |unwrapped_infix| {
                 self.nextToken();
                 leftExprNode = try unwrapped_infix(self, leftExprNode);
@@ -161,7 +161,7 @@ pub const Parser = struct {
             .operator = Operator.fromString(self.curToken.Literal).?,
             .rightExprPtr = null,
         };
-        var prec = self.curPrecedence();
+        const prec = self.curPrecedence();
         self.nextToken();
 
         // right-assoc
@@ -205,7 +205,7 @@ pub const Parser = struct {
     pub fn parseGroupedExpression(self: *Parser) !?*Node {
         self.nextToken();
 
-        var exprPtr = (try self.parseExpression(.LOWEST)).?;
+        const exprPtr = (try self.parseExpression(.LOWEST)).?;
 
         if (!(try self.expectPeek(TokenType.RPAREN))) {
             return null;
@@ -275,7 +275,7 @@ pub const Parser = struct {
         }
         // Assert Parameter limit is 127
         if (identifiers.items.len > 127) {
-            var ctx: ParserErrorContext = .{
+            const ctx: ParserErrorContext = .{
                 .err = ParserError.ParameterListTooLong,
                 .msg = "Paramter List Limit is 127",
             };
@@ -384,7 +384,7 @@ pub const Parser = struct {
         self.nextToken();
 
         while (!self.curTokenIs(TokenType.RBRACE) and !self.curTokenIs(TokenType.EOF)) {
-            var stmt = try self.parseStatement();
+            const stmt = try self.parseStatement();
             if (stmt) |st| {
                 try blockPtr.statements.append(self.gpa, st);
             }
@@ -442,7 +442,7 @@ pub const Parser = struct {
     pub fn parseBoolean(self: *Parser) !?*Node {
         var booleanPtr = try self.gpa.create(Node.Boolean);
 
-        var value = self.curTokenIs(.TRUE);
+        const value = self.curTokenIs(.TRUE);
 
         booleanPtr.* = Node.Boolean{ .token = self.curToken, .value = value };
 
@@ -475,9 +475,9 @@ pub const Parser = struct {
     }
 
     pub inline fn peekError(self: *Parser, tok: TokenType) !void {
-        var msg = try std.fmt.allocPrint(self.gpa, "Expected next token to be {any} got '{any}' instead", .{ tok, self.peekToken.Type });
+        const msg = try std.fmt.allocPrint(self.gpa, "Expected next token to be {any} got '{any}' instead", .{ tok, self.peekToken.Type });
 
-        var ctx: ParserErrorContext = .{
+        const ctx: ParserErrorContext = .{
             .err = ParserError.UnexpectedToken,
             .msg = msg,
         };
@@ -499,7 +499,7 @@ pub const Parser = struct {
     pub fn noPrefixParseFn(self: *Parser, tok: TokenType) !void {
         var errCtx = ParserErrorContext{ .err = ParserError.NoPrefixParseFn, .msg = undefined };
 
-        var msg = try std.fmt.allocPrint(self.gpa, "Parser Error: No Prefix function found for {any}", .{tok});
+        const msg = try std.fmt.allocPrint(self.gpa, "Parser Error: No Prefix function found for {any}", .{tok});
 
         errCtx.msg = msg;
 
@@ -519,7 +519,7 @@ test "initParser" {
     const input = "let five = 5;";
 
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    var parser = Parser.init(input, gpa.allocator());
+    const parser = Parser.init(input, gpa.allocator());
 
     try testing.expect(parser.curToken.Type != undefined);
     try testing.expect(parser.peekToken.Type != undefined);

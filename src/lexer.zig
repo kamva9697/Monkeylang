@@ -16,7 +16,7 @@ pub const Lexer = struct {
     const Self = @This();
 
     pub fn init(source: [:0]const u8) Self {
-        var lexer = Lexer{ .input = source };
+        const lexer = Lexer{ .input = source };
         return lexer;
     }
 
@@ -132,7 +132,7 @@ test "ReadChar" {
 test "NextToken" {
     const input = "let five = 5;";
     var lex = Lexer.init(input);
-    var tok = lex.nextToken();
+    const tok = lex.nextToken();
 
     try testing.expect(.LET == tok.Type);
     try testing.expectEqualStrings("let", tok.Literal);
@@ -142,7 +142,7 @@ test "ReadNumber" {
     const input = "523 ";
     var lex = Lexer.init(input);
     lex.readChar();
-    var num = lex.readNumber();
+    const num = lex.readNumber();
     try testing.expectEqualStrings("523", num);
 }
 
@@ -150,6 +150,6 @@ test "ReadIndentifier" {
     const input = "five ";
     var lex = Lexer.init(input);
     lex.readChar();
-    var ident = lex.readIdentifier();
+    const ident = lex.readIdentifier();
     try testing.expectEqualStrings("five", ident);
 }

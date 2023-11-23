@@ -92,7 +92,7 @@ pub const arithmeticOperators = [_]Test{
 test "LexerEOF" {
     const input = "";
     var lex = Lexer.init(input);
-    var tok = lex.nextToken();
+    const tok = lex.nextToken();
     try testing.expect(TokenType.EOF == tok.Type);
 }
 
@@ -133,7 +133,7 @@ test "VariableAssignmentTest" {
 
 fn run_test(expectedTokens: []const Test, lex: *Lexer) !void {
     for (expectedTokens) |tc| {
-        var tok = lex.nextToken();
+        const tok = lex.nextToken();
         try testing.expectEqual(tc.expectedType, tok.Type);
         try testing.expectEqualStrings(tc.expectedLiteral, tok.Literal);
     }

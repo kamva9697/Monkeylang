@@ -4,4 +4,5 @@ comptime {
     _ = @import("lexerTest.zig");
     _ = @import("parser.zig");
     _ = @import("parser_test.zig");
+    _ = @import("evaluator_tests.zig");
 }

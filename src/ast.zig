@@ -249,7 +249,7 @@ pub const Node = struct {
                 }
             },
             .Block => {
-                var blockNode = node.cast(.Block).?;
+                const blockNode = node.cast(.Block).?;
                 for (blockNode.statements.items) |st| {
                     try st.toString(writer);
                 }

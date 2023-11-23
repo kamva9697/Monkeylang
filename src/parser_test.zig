@@ -257,19 +257,19 @@ test "CallExpressionsTest" {
 pub fn CallExpressionTest(comptime input: [:0]const u8) !void {
     var par = Parser.init(input, alloc);
 
-    var program = try par.parseProgram();
+    const program = try par.parseProgram();
     // checkParserErrors(&par);
 
     try testing.expectEqual(program.statements.items.len, @as(usize, 1));
 
     var node = program.statements.items[0];
-    var callExprNode = node.cast(.CallExpression).?;
+    const callExprNode = node.cast(.CallExpression).?;
 
     try testIdentifierLiteral(callExprNode.function, "add");
 
     try testing.expectEqual(@as(usize, 3), callExprNode.arguments.len);
 
-    var args = callExprNode.arguments;
+    const args = callExprNode.arguments;
 
     try testLiteralExpressions(u32, args[0], 1);
     try testInfixExpression(u32, args[1], 2, .multiply, 3);
@@ -282,7 +282,7 @@ pub fn FunctionParameterTest(
 ) !void {
     var par = Parser.init(input, alloc);
 
-    var program = try par.parseProgram();
+    const program = try par.parseProgram();
     // checkParserErrors(&par);
 
     var node = program.statements.items[0];
@@ -298,7 +298,7 @@ pub fn FunctionParameterTest(
 pub fn FunctionLiteralTest(comptime input: [:0]const u8) !void {
     var par = Parser.init(input, alloc);
 
-    var program = try par.parseProgram();
+    const program = try par.parseProgram();
     // checkParserErrors(&par);
 
     //assert
@@ -328,7 +328,7 @@ pub fn FunctionLiteralTest(comptime input: [:0]const u8) !void {
 pub fn IfExpressionTest(comptime input: [:0]const u8) !void {
     var par = Parser.init(input, alloc);
 
-    var program = try par.parseProgram();
+    const program = try par.parseProgram();
     checkParserErrors(&par);
 
     try testing.expectEqual(@as(usize, 1), program.statements.items.len);
@@ -338,13 +338,13 @@ pub fn IfExpressionTest(comptime input: [:0]const u8) !void {
 
     try testing.expectEqual(Node.Id.IfExpression, node.id);
 
-    var expr = node.cast(.IfExpression).?;
+    const expr = node.cast(.IfExpression).?;
 
     try testInfixExpression([]const u8, expr.condition, "x", .less_than, "y");
 
     try testing.expectEqual(@as(usize, 1), expr.consequence.statements.items.len);
 
-    var conseq = expr.consequence.statements.items[0];
+    const conseq = expr.consequence.statements.items[0];
 
     try testLiteralExpressions([]const u8, conseq, "x");
 
@@ -371,7 +371,7 @@ pub fn IdentifierLiteralTest(comptime T: type) type {
         pub fn run(comptime input: [:0]const u8, comptime value: []const u8) !void {
             var par = Parser.init(input, allocator.allocator());
 
-            var program = try par.parseProgram();
+            const program = try par.parseProgram();
 
             try testing.expect(program.statements.items.len == 1);
 
@@ -385,7 +385,7 @@ fn IntegerLiteraltest(comptime T: type) type {
         pub fn run(comptime input: [:0]const u8, comptime value: T) !void {
             var par = Parser.init(input, allocator.allocator());
 
-            var program = try par.parseProgram();
+            const program = try par.parseProgram();
 
             try testing.expect(program.statements.items.len == 1);
 
@@ -450,7 +450,7 @@ pub fn PrefixTest(comptime T: type) type {
         pub fn run(comptime input: [:0]const u8, comptime op: ast.Operator, comptime value: T) !void {
             var par = Parser.init(input, alloc);
 
-            var program = try par.parseProgram();
+            const program = try par.parseProgram();
 
             //assert
             try testing.expect(1 == program.statements.items.len);
@@ -478,7 +478,7 @@ pub fn InfixTest(comptime T: type) type {
         ) !void {
             var par = Parser.init(input, alloc);
 
-            var program = try par.parseProgram();
+            const program = try par.parseProgram();
 
             try testing.expectEqual(@as(usize, 1), program.statements.items.len);
 
@@ -529,7 +529,7 @@ fn testReturnStatement() !void {
 
         std.debug.assert(program.statements.items.len == 1);
 
-        var node = program.statements.items[0];
+        const node = program.statements.items[0];
 
         try testing.expectEqual(Node.Id.ReturnStatement, node.id);
     }
