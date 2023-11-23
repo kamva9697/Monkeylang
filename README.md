@@ -20,17 +20,17 @@ Development of the Monkey programming language with [zig](https://www.ziglang.or
         - [x] Call expressions
 
 ## WIP: 
-- [ ] Evaluator:
-    - [ ] Object System
-    - [ ] Integers
-    - [ ] Booleans
-    - [ ] Null
+- [x] Evaluator:
+    - [x] Object System
+    - [x] Integers
+    - [x] Booleans
+    - [x] Null
     - [ ] Expressions
-        - [ ] Integer Literals
-        - [ ] Boolean Literals
-        - [ ] Null
-        - [ ] Infix Expressions
-        - [ ] Prefix Expressions
+        - [x] Integer Literals
+        - [x] Boolean Literals
+        - [x] Null
+        - [x] Infix Expressions
+        - [x] Prefix Expressions
         - [ ] Conditionals
         - [ ] Return Statements
         - [ ] Error handling
