@@ -28,7 +28,7 @@ pub fn start(gpa: std.mem.Allocator) !void {
             continue;
         }
 
-        const evaluated = try evaluator.evalStatements(gpa, program);
+        const evaluated = try evaluator.evalStatements(gpa, program.statements.items);
         if (evaluated) |evaled| {
             try evaled.Inspect(writer);
         }

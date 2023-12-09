@@ -8,7 +8,7 @@ const debug = std.debug;
 
 // TODO: Use tagged Union for Token instead
 // TokenId
-pub const TokenType = enum(usize) {
+pub const TokenType = enum {
     // Operators
     ASSIGN,
     PLUS,

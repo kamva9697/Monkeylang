@@ -15,6 +15,7 @@ var alloc = allocator.allocator(); // the ast Test Deallocates
 test "Parser Error" {
     const input = "let = 5";
     var p = Parser.init(input, allocator.allocator());
+    defer p.deinit();
     checkParserErrors(&p);
 }
 
@@ -477,6 +478,7 @@ pub fn InfixTest(comptime T: type) type {
             comptime right: T,
         ) !void {
             var par = Parser.init(input, alloc);
+            defer par.deinit();
 
             const program = try par.parseProgram();
 
@@ -497,6 +499,7 @@ pub fn testLetStatements(
     comptime expectedValue: T,
 ) !void {
     var p = Parser.init(input, allocator.allocator());
+    defer p.deinit();
 
     checkParserErrors(&p);
 
@@ -524,6 +527,7 @@ fn testReturnStatement() !void {
     };
     for (tests) |tc| {
         var p = Parser.init(tc.input, allocator.allocator());
+        defer p.deinit();
 
         const program = try p.parseProgram();
 

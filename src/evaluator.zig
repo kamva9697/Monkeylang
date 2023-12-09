@@ -10,12 +10,12 @@ const Allocator = std.mem.Allocator;
 const Math = std.math;
 
 // Interned values
-const TRUE_VALUE = Object.Boolean{ .value = true };
-const FALSE_VALUE = Object.Boolean{ .value = false };
-const NULL_VALUE = Object.Null{};
+pub const TRUE_VALUE = Object.Boolean{ .value = true };
+pub const FALSE_VALUE = Object.Boolean{ .value = false };
+pub const NULL_VALUE = Object.Null{};
 
 // Todo: Block, FunctionLiteral,
-pub fn eval(alloc: Allocator, node: *Ast.Node) !?*Object {
+pub fn eval(alloc: Allocator, node: *Ast.Node) anyerror!?*Object {
     return switch (node.id) {
         .IntegerLiteral => {
             const intNode = node.cast(.IntegerLiteral).?;
@@ -55,6 +55,14 @@ pub fn eval(alloc: Allocator, node: *Ast.Node) !?*Object {
                 left.?,
             );
         },
+        .Block => {
+            const blockNode = node.cast(.Block).?;
+            return try evalStatements(alloc, blockNode.statements.items);
+        },
+        .IfExpression => {
+            const ifNode = node.cast(.IfExpression).?;
+            return try evalIfExpression(alloc, ifNode);
+        },
         else => {
             var obj = try createObject(Object.Null, alloc, NULL_VALUE);
             return &obj.base;
@@ -62,10 +70,34 @@ pub fn eval(alloc: Allocator, node: *Ast.Node) !?*Object {
     };
 }
 
-pub fn evalStatements(alloc: Allocator, tree: Ast.Tree) !?*Object {
+pub fn evalIfExpression(alloc: Allocator, ifNode: *Node.IfExpression) !?*Object {
+    const condition = (try eval(alloc, ifNode.condition)).?;
+
+    if (isTruthy(condition)) {
+        return try eval(alloc, &ifNode.consequence.base);
+    } else if (ifNode.alternative) |alternative| {
+        return try eval(alloc, &alternative.base);
+    } else {
+        var obj = try createObject(Object.Null, alloc, NULL_VALUE);
+        return &obj.base;
+    }
+}
+
+pub fn isTruthy(obj: *Object) bool {
+    return switch (obj.ty) {
+        .Null => false,
+        .Boolean => {
+            const boolNode = obj.cast(.Boolean).?;
+            return if (boolNode.value) true else false;
+        },
+        else => true,
+    };
+}
+
+pub fn evalStatements(alloc: Allocator, tree: []*Node) !?*Object {
     var result: ?*Object = null;
 
-    for (tree.statements.items) |stmt| {
+    for (tree) |stmt| {
         result = (try eval(alloc, stmt)).?;
     }
     return result;
@@ -77,13 +109,38 @@ pub fn evalInfixExpression(
     right: *Object,
     left: *Object,
 ) !*Object {
-    if (right.ty == left.ty) {
+    if (right.ty == .Integer and left.ty == .Integer) {
         return try evalIntegerInfixExpressions(
             alloc,
             op,
             right,
             left,
         );
+    }
+    if (right.ty == .Boolean and left.ty == .Boolean) {
+        const rightVal = right.cast(.Boolean).?;
+        const leftVal = left.cast(.Boolean).?;
+        return switch (op) {
+            .equal_to => {
+                var obj = try createObject(
+                    Object.Boolean,
+                    alloc,
+                    // This might Never be true
+                    if (rightVal.value == leftVal.value) TRUE_VALUE else FALSE_VALUE,
+                );
+                return &obj.base;
+            },
+            .not_equal_to => {
+                var obj = try createObject(
+                    Object.Boolean,
+                    alloc,
+                    // This might Never be true
+                    if (rightVal.value != leftVal.value) TRUE_VALUE else FALSE_VALUE,
+                );
+                return &obj.base;
+            },
+            else => unreachable,
+        };
     }
     var obj = try createObject(Object.Null, alloc, NULL_VALUE);
     return &obj.base;
@@ -138,6 +195,38 @@ pub fn evalIntegerInfixExpressions(
                 Object.Integer{
                     .value = try Math.divTrunc(i64, leftVal, rightVal),
                 },
+            );
+            return &obj.base;
+        },
+        .less_than => {
+            var obj = try createObject(
+                Object.Boolean,
+                alloc,
+                if (leftVal < rightVal) TRUE_VALUE else FALSE_VALUE,
+            );
+            return &obj.base;
+        },
+        .greater_than => {
+            var obj = try createObject(
+                Object.Boolean,
+                alloc,
+                if (leftVal > rightVal) TRUE_VALUE else FALSE_VALUE,
+            );
+            return &obj.base;
+        },
+        .equal_to => {
+            var obj = try createObject(
+                Object.Boolean,
+                alloc,
+                if (leftVal == rightVal) TRUE_VALUE else FALSE_VALUE,
+            );
+            return &obj.base;
+        },
+        .not_equal_to => {
+            var obj = try createObject(
+                Object.Boolean,
+                alloc,
+                if (leftVal != rightVal) TRUE_VALUE else FALSE_VALUE,
             );
             return &obj.base;
         },

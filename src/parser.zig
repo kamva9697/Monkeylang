@@ -17,8 +17,8 @@ pub const Parser = struct {
     peekToken: Token,
     prefixParseFns: std.AutoHashMapUnmanaged(TokenType, prefixParseFn),
     infixParseFns: std.AutoHashMapUnmanaged(TokenType, infixParseFn),
-    errors: std.ArrayList(ParserErrorContext) = undefined,
-    gpa: std.mem.Allocator,
+    errors: std.ArrayListUnmanaged(ParserErrorContext),
+    arena: std.heap.ArenaAllocator,
 
     // Class type Declarations
     pub const prefixParseFn = *const fn (*Parser) anyerror!?*Node;
@@ -61,12 +61,12 @@ pub const Parser = struct {
     pub fn init(input: [:0]const u8, allocator: std.mem.Allocator) Parser {
         var p = Parser{
             .lex = Lexer.init(input),
-            .gpa = allocator,
             .prefixParseFns = .{},
             .infixParseFns = .{},
             .curToken = .{ .Type = undefined, .Literal = undefined },
             .peekToken = .{ .Type = undefined, .Literal = undefined },
-            .errors = std.ArrayList(ParserErrorContext).init(allocator),
+            .arena = std.heap.ArenaAllocator.init(allocator),
+            .errors = .{},
         };
 
         p.registerInfix(TokenType.LPAREN, &parseCallExpression);
@@ -102,7 +102,7 @@ pub const Parser = struct {
 
     pub fn parseProgram(self: *Parser) !ast.Tree {
         var tree = ast.Tree{
-            .statements = std.ArrayList(*Node).init(self.gpa),
+            .statements = std.ArrayList(*Node).init(self.arena.allocator()),
         };
 
         while (self.curToken.Type != .EOF) {
@@ -154,7 +154,7 @@ pub const Parser = struct {
     }
 
     pub fn parseInfixExpression(self: *Parser, left: ?*Node) !?*Node {
-        var exprPtr = try self.gpa.create(Node.InfixExpression);
+        var exprPtr = try self.arena.allocator().create(Node.InfixExpression);
         exprPtr.* = Node.InfixExpression{
             .token = self.curToken,
             .leftExprPtr = left.?,
@@ -175,7 +175,7 @@ pub const Parser = struct {
     }
 
     pub fn parsePrefixExpression(self: *Parser) !?*Node {
-        var exprPtr = try self.gpa.create(Node.PrefixExpression);
+        var exprPtr = try self.arena.allocator().create(Node.PrefixExpression);
         exprPtr.* = Node.PrefixExpression{
             .token = self.curToken,
             .operator = Operator.fromString(self.curToken.Literal).?,
@@ -184,7 +184,7 @@ pub const Parser = struct {
 
         self.nextToken();
 
-        var rightExpr: *Node = try self.gpa.create(Node);
+        var rightExpr: *Node = try self.arena.allocator().create(Node);
 
         rightExpr = (try self.parseExpression(.PREFIX)).?;
 
@@ -195,7 +195,7 @@ pub const Parser = struct {
 
     // Parse Identifiers
     pub fn parseIdentifier(self: *Parser) !?*Node {
-        var nodePtr = try self.gpa.create(Node.Identifier);
+        var nodePtr = try self.arena.allocator().create(Node.Identifier);
 
         nodePtr.* = Node.Identifier{ .token = self.curToken, .value = self.curToken.Literal };
 
@@ -216,7 +216,7 @@ pub const Parser = struct {
 
     // Parse Literals
     pub fn parseFunctionLiteral(self: *Parser) !?*Node {
-        var lit = try self.gpa.create(Node.FunctionLiteral);
+        var lit = try self.arena.allocator().create(Node.FunctionLiteral);
 
         lit.* = Node.FunctionLiteral{
             .token = self.curToken,
@@ -242,7 +242,7 @@ pub const Parser = struct {
     }
 
     pub fn parseFunctionParameters(self: *Parser) !?[]*Node.Identifier {
-        var identifiers = try std.ArrayList(*Node.Identifier).initCapacity(self.gpa, 128);
+        var identifiers = try std.ArrayList(*Node.Identifier).initCapacity(self.arena.allocator(), 128);
 
         if (self.peekTokenIs(.RPAREN)) {
             self.nextToken();
@@ -251,7 +251,7 @@ pub const Parser = struct {
         self.nextToken();
 
         //first Identifier
-        var ident = try self.gpa.create(Node.Identifier);
+        var ident = try self.arena.allocator().create(Node.Identifier);
         ident.* = Node.Identifier{
             .token = self.curToken,
             .value = self.curToken.Literal,
@@ -262,7 +262,7 @@ pub const Parser = struct {
         while (self.peekTokenIs(.COMMA)) {
             self.nextToken();
             self.nextToken();
-            ident = try self.gpa.create(Node.Identifier);
+            ident = try self.arena.allocator().create(Node.Identifier);
             ident.* = Node.Identifier{
                 .token = self.curToken,
                 .value = self.curToken.Literal,
@@ -279,14 +279,14 @@ pub const Parser = struct {
                 .err = ParserError.ParameterListTooLong,
                 .msg = "Paramter List Limit is 127",
             };
-            try self.errors.append(ctx);
+            try self.errors.append(self.arena.allocator(), ctx);
         }
 
         return try identifiers.toOwnedSlice();
     }
 
     pub fn parseIntegerLiteral(self: *Parser) !?*Node {
-        var litPtr = try self.gpa.create(Node.IntegerLiteral);
+        var litPtr = try self.arena.allocator().create(Node.IntegerLiteral);
 
         litPtr.* = Node.IntegerLiteral{ .token = self.curToken, .value = undefined };
 
@@ -296,7 +296,7 @@ pub const Parser = struct {
     }
 
     pub fn parseIfExpression(self: *Parser) !?*Node {
-        var ifExprPtr = try self.gpa.create(Node.IfExpression);
+        var ifExprPtr = try self.arena.allocator().create(Node.IfExpression);
 
         ifExprPtr.* = Node.IfExpression{
             .token = self.curToken,
@@ -326,10 +326,11 @@ pub const Parser = struct {
         if (self.peekTokenIs(TokenType.ELSE)) {
             self.nextToken();
 
-            if (!self.peekTokenIs(TokenType.RBRACE)) {
+            if (!self.peekTokenIs(TokenType.LBRACE)) {
                 return null;
             }
 
+            self.nextToken(); // skip '{'
             var altNode = (try self.parseBlockStatement()).?;
             ifExprPtr.alternative = altNode.cast(.Block).?;
         }
@@ -338,7 +339,7 @@ pub const Parser = struct {
     }
 
     pub fn parseCallExpression(self: *Parser, func: ?*Node) !?*Node {
-        var expr = try self.gpa.create(Node.CallExpression);
+        var expr = try self.arena.allocator().create(Node.CallExpression);
         expr.* = Node.CallExpression{
             .token = self.curToken,
             .function = func.?,
@@ -349,7 +350,7 @@ pub const Parser = struct {
     }
 
     pub fn parseCallArguments(self: *Parser) !?[]*Node {
-        var args = std.ArrayList(*Node).init(self.gpa);
+        var args = std.ArrayList(*Node).init(self.arena.allocator());
 
         if (self.peekTokenIs(.RPAREN)) {
             self.nextToken();
@@ -374,7 +375,7 @@ pub const Parser = struct {
     }
 
     pub fn parseBlockStatement(self: *Parser) !?*Node {
-        var blockPtr = try self.gpa.create(Node.Block);
+        var blockPtr = try self.arena.allocator().create(Node.Block);
 
         blockPtr.* = Node.Block{
             .token = self.curToken,
@@ -386,7 +387,7 @@ pub const Parser = struct {
         while (!self.curTokenIs(TokenType.RBRACE) and !self.curTokenIs(TokenType.EOF)) {
             const stmt = try self.parseStatement();
             if (stmt) |st| {
-                try blockPtr.statements.append(self.gpa, st);
+                try blockPtr.statements.append(self.arena.allocator(), st);
             }
             self.nextToken();
         }
@@ -395,7 +396,7 @@ pub const Parser = struct {
 
     // Parse Statements
     pub fn parseLetStatement(self: *Parser) !?*Node {
-        var letStmtPtr = try self.gpa.create(Node.LetStatement);
+        var letStmtPtr = try self.arena.allocator().create(Node.LetStatement);
 
         letStmtPtr.* = Node.LetStatement{
             .token = self.curToken,
@@ -424,7 +425,7 @@ pub const Parser = struct {
     }
 
     pub fn parseReturnStatement(self: *Parser) !?*Node {
-        var returnStmtPtr = try self.gpa.create(Node.ReturnStatement);
+        var returnStmtPtr = try self.arena.allocator().create(Node.ReturnStatement);
 
         returnStmtPtr.* = Node.ReturnStatement{ .token = self.curToken, .returnValue = null };
 
@@ -440,7 +441,7 @@ pub const Parser = struct {
     }
 
     pub fn parseBoolean(self: *Parser) !?*Node {
-        var booleanPtr = try self.gpa.create(Node.Boolean);
+        var booleanPtr = try self.arena.allocator().create(Node.Boolean);
 
         const value = self.curTokenIs(.TRUE);
 
@@ -475,23 +476,23 @@ pub const Parser = struct {
     }
 
     pub inline fn peekError(self: *Parser, tok: TokenType) !void {
-        const msg = try std.fmt.allocPrint(self.gpa, "Expected next token to be {any} got '{any}' instead", .{ tok, self.peekToken.Type });
+        const msg = try std.fmt.allocPrint(self.arena.allocator(), "Expected next token to be {any} got '{any}' instead", .{ tok, self.peekToken.Type });
 
         const ctx: ParserErrorContext = .{
             .err = ParserError.UnexpectedToken,
             .msg = msg,
         };
-        try self.errors.append(ctx);
+        try self.errors.append(self.arena.allocator(), ctx);
     }
 
     pub fn registerPrefix(self: *Parser, currentToken: TokenType, prefixFunc: prefixParseFn) void {
-        self.prefixParseFns.put(self.gpa, currentToken, prefixFunc) catch |err| {
+        self.prefixParseFns.put(self.arena.allocator(), currentToken, prefixFunc) catch |err| {
             std.debug.panic("Error: {any}", .{err});
         };
     }
 
     pub fn registerInfix(self: *Parser, currentToken: TokenType, infixFunc: infixParseFn) void {
-        self.infixParseFns.put(self.gpa, currentToken, infixFunc) catch |err| {
+        self.infixParseFns.put(self.arena.allocator(), currentToken, infixFunc) catch |err| {
             std.debug.panic("Error: {any}", .{err});
         };
     }
@@ -499,18 +500,19 @@ pub const Parser = struct {
     pub fn noPrefixParseFn(self: *Parser, tok: TokenType) !void {
         var errCtx = ParserErrorContext{ .err = ParserError.NoPrefixParseFn, .msg = undefined };
 
-        const msg = try std.fmt.allocPrint(self.gpa, "Parser Error: No Prefix function found for {any}", .{tok});
+        const msg = try std.fmt.allocPrint(self.arena.allocator(), "Parser Error: No Prefix function found for {any}", .{tok});
 
         errCtx.msg = msg;
 
-        try self.errors.append(errCtx);
+        try self.errors.append(self.arena.allocator(), errCtx);
     }
 
     // Destructor
-    pub fn deinit(self: *Parser) void {
-        self.errors.deinit();
-        self.prefixParseFns.deinit(self.gpa);
-        self.infixParseFns.deinit(self.gpa);
+    pub fn deinit(self: *const Parser) void {
+        self.arena.deinit();
+        // self.errors.deinit(self.arena.allocator(),);
+        // self.prefixParseFns.deinit(self.arena.allocator());
+        // self.infixParseFns.deinit(self.arena.allocator());
         // self.parseProgram().deinit();
     }
 };
@@ -520,7 +522,5 @@ test "initParser" {
 
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     const parser = Parser.init(input, gpa.allocator());
-
-    try testing.expect(parser.curToken.Type != undefined);
-    try testing.expect(parser.peekToken.Type != undefined);
+    defer parser.deinit();
 }
