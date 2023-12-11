@@ -17,6 +17,10 @@ pub const NULL_VALUE = Object.Null{};
 // Todo: Block, FunctionLiteral,
 pub fn eval(alloc: Allocator, node: *Ast.Node) anyerror!?*Object {
     return switch (node.id) {
+        .Tree => {
+            const rootNode = node.cast(.Tree).?;
+            return try evalProgram(alloc, rootNode.statements.items);
+        },
         .IntegerLiteral => {
             const intNode = node.cast(.IntegerLiteral).?;
             var obj = try createObject(
@@ -57,17 +61,57 @@ pub fn eval(alloc: Allocator, node: *Ast.Node) anyerror!?*Object {
         },
         .Block => {
             const blockNode = node.cast(.Block).?;
-            return try evalStatements(alloc, blockNode.statements.items);
+            return evalBlock(
+                alloc,
+                blockNode,
+            );
         },
         .IfExpression => {
             const ifNode = node.cast(.IfExpression).?;
             return try evalIfExpression(alloc, ifNode);
+        },
+        .ReturnStatement => {
+            const returnStatement = node.cast(.ReturnStatement).?;
+            const rvNode = (try eval(alloc, returnStatement.returnValue.?)).?;
+            var obj = try createObject(
+                Object.ReturnValue,
+                alloc,
+                Object.ReturnValue{ .value = rvNode },
+            );
+            return &obj.base;
         },
         else => {
             var obj = try createObject(Object.Null, alloc, NULL_VALUE);
             return &obj.base;
         },
     };
+}
+
+pub fn evalProgram(alloc: Allocator, tree: []*Node) !?*Object {
+    var result: ?*Object = null;
+
+    for (tree) |stmt| {
+        result = (try eval(alloc, stmt)).?;
+
+        if (result.?.ty == .ReturnValue) {
+            const returnValue = result.?.cast(.ReturnValue).?;
+            return returnValue.value;
+        }
+    }
+    return result;
+}
+
+pub fn evalBlock(alloc: Allocator, block: *Node.Block) !?*Object {
+    var result: ?*Object = null;
+
+    for (block.statements.items) |stmt| {
+        result = (try eval(alloc, stmt)).?;
+
+        if (result.?.ty == .ReturnValue) {
+            return result.?;
+        }
+    }
+    return result;
 }
 
 pub fn evalIfExpression(alloc: Allocator, ifNode: *Node.IfExpression) !?*Object {
@@ -92,15 +136,6 @@ pub fn isTruthy(obj: *Object) bool {
         },
         else => true,
     };
-}
-
-pub fn evalStatements(alloc: Allocator, tree: []*Node) !?*Object {
-    var result: ?*Object = null;
-
-    for (tree) |stmt| {
-        result = (try eval(alloc, stmt)).?;
-    }
-    return result;
 }
 
 pub fn evalInfixExpression(

@@ -100,8 +100,10 @@ pub const Parser = struct {
         self.peekToken = self.lex.nextToken();
     }
 
-    pub fn parseProgram(self: *Parser) !ast.Tree {
-        var tree = ast.Tree{
+    pub fn parseProgram(self: *Parser) !*ast.Node {
+        var tree = try self.arena.child_allocator.create(Node.Tree);
+
+        tree.* = Node.Tree{
             .statements = std.ArrayList(*Node).init(self.arena.allocator()),
         };
 
@@ -114,7 +116,7 @@ pub const Parser = struct {
             }
         }
 
-        return tree;
+        return &tree.base;
     }
 
     pub fn parseStatement(self: *Parser) !?*Node {
@@ -149,6 +151,9 @@ pub const Parser = struct {
                 leftExprNode = try unwrapped_infix(self, leftExprNode);
             }
         }
+
+        // consume semicolon after statement
+        if (self.peekTokenIs(.SEMICOLON)) self.nextToken();
 
         return leftExprNode;
     }

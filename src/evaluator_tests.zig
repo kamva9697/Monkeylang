@@ -79,6 +79,21 @@ test "TestEvalIfExpressions" {
     try testIfExpressions(allocator, "if (1 < 2) { 10 } else { 20 }", 10);
 }
 
+test "TestReturnStatements" {
+    var arena = std.heap.ArenaAllocator.init(gpa.allocator());
+    const allocator = arena.allocator(); // the ast Test Deallocates
+    defer arena.deinit();
+    try testReturnStatements(allocator, "return 10;", 10);
+    try testReturnStatements(allocator, "return 10; 9;", 10);
+    try testReturnStatements(allocator, "return 2 * 5; 9;", 10);
+    try testReturnStatements(allocator, "7; return 2 * 5; 9;", 10);
+}
+
+fn testReturnStatements(alloc: std.mem.Allocator, input: [:0]const u8, expected: i64) !void {
+    const evaluated = (try testEval(alloc, input)).?;
+    try testIntegerObject(evaluated, expected);
+}
+
 fn testIfExpressions(alloc: std.mem.Allocator, input: [:0]const u8, expected: ?i64) !void {
     const evaluated = (try testEval(alloc, input)).?;
 
@@ -111,9 +126,10 @@ fn testIntegerExpressions(alloc: std.mem.Allocator, input: [:0]const u8, expecte
 fn testEval(alloc: std.mem.Allocator, input: [:0]const u8) !?*Object {
     var parser = Parser.init(input, alloc);
     defer parser.deinit();
-    const astTree = (try parser.parseProgram());
+    const rootNode = (try parser.parseProgram());
+    const astTree = rootNode.cast(.Tree).?;
 
-    return (try evaluator.evalStatements(alloc, astTree.statements.items)).?;
+    return (try evaluator.evalProgram(alloc, astTree.statements.items)).?;
 }
 
 fn testIntegerObject(obj: *Object, expected: i64) !void {

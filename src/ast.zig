@@ -48,6 +48,7 @@ pub const Node = struct {
     id: Id,
 
     pub const Id = enum {
+        Tree,
         LetStatement,
         ReturnStatement,
         Identifier,
@@ -62,6 +63,7 @@ pub const Node = struct {
 
         pub fn Type(comptime id: Id) type {
             return switch (id) {
+                .Tree => Tree,
                 .LetStatement => LetStatement,
                 .ReturnStatement => ReturnStatement,
                 .Identifier => Identifier,
@@ -78,6 +80,14 @@ pub const Node = struct {
     };
 
     ////// Concrete Types ///////////////
+    pub const Tree = struct {
+        base: Node = .{ .id = .Tree },
+        statements: std.ArrayList(*Node),
+
+        pub fn deinit(self: *Tree) void {
+            self.statements.deinit();
+        }
+    };
     pub const ReturnStatement = struct {
         base: Node = .{ .id = .ReturnStatement },
         token: Token,
@@ -171,6 +181,13 @@ pub const Node = struct {
 
     pub fn toString(node: *Node, writer: anytype) !void {
         return switch (node.id) {
+            .Tree => {
+                const treeNode = node.cast(.Tree).?;
+
+                for (treeNode.statements.items) |st| {
+                    try st.toString(writer);
+                }
+            },
             .ReturnStatement => {
                 const returnStatementNode = node.cast(.ReturnStatement).?;
 
@@ -285,20 +302,20 @@ pub const Node = struct {
 };
 
 ///////////// AST //////////////
-pub const Tree = struct {
-    statements: std.ArrayList(*Node),
+// pub const Tree = struct {
+//     statements: std.ArrayList(*Node),
 
-    pub fn toString(self: *Tree, writer: anytype) !void {
-        for (self.statements.items) |st| {
-            try st.toString(writer);
-        }
-    }
+//     pub fn toString(self: *Tree, writer: anytype) !void {
+//         for (self.statements.items) |st| {
+//             try st.toString(writer);
+//         }
+//     }
 
-    pub fn deinit(self: *Tree) void {
-        self.statements.deinit();
-        self.string_ast.deinit();
-    }
-};
+//     pub fn deinit(self: *Tree) void {
+//         self.statements.deinit();
+//         self.string_ast.deinit();
+//     }
+// };
 
 test "toString" {
     const testing = std.testing;

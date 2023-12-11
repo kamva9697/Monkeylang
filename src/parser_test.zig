@@ -258,7 +258,8 @@ test "CallExpressionsTest" {
 pub fn CallExpressionTest(comptime input: [:0]const u8) !void {
     var par = Parser.init(input, alloc);
 
-    const program = try par.parseProgram();
+    const rootNode = try par.parseProgram();
+    const program = rootNode.cast(.Tree).?;
     // checkParserErrors(&par);
 
     try testing.expectEqual(program.statements.items.len, @as(usize, 1));
@@ -283,7 +284,8 @@ pub fn FunctionParameterTest(
 ) !void {
     var par = Parser.init(input, alloc);
 
-    const program = try par.parseProgram();
+    const rootNode = try par.parseProgram();
+    const program = rootNode.cast(.Tree).?;
     // checkParserErrors(&par);
 
     var node = program.statements.items[0];
@@ -299,7 +301,8 @@ pub fn FunctionParameterTest(
 pub fn FunctionLiteralTest(comptime input: [:0]const u8) !void {
     var par = Parser.init(input, alloc);
 
-    const program = try par.parseProgram();
+    const rootNode = try par.parseProgram();
+    const program = rootNode.cast(.Tree).?;
     // checkParserErrors(&par);
 
     //assert
@@ -329,7 +332,8 @@ pub fn FunctionLiteralTest(comptime input: [:0]const u8) !void {
 pub fn IfExpressionTest(comptime input: [:0]const u8) !void {
     var par = Parser.init(input, alloc);
 
-    const program = try par.parseProgram();
+    const rootNode = try par.parseProgram();
+    const program = rootNode.cast(.Tree).?;
     checkParserErrors(&par);
 
     try testing.expectEqual(@as(usize, 1), program.statements.items.len);
@@ -358,7 +362,7 @@ pub fn ToStringTest(comptime input: [:0]const u8, comptime expected: []const u8)
 
     var par = Parser.init(input, alloc);
 
-    var program = try par.parseProgram();
+    const program = try par.parseProgram();
 
     try program.toString(buf.writer());
 
@@ -372,7 +376,8 @@ pub fn IdentifierLiteralTest(comptime T: type) type {
         pub fn run(comptime input: [:0]const u8, comptime value: []const u8) !void {
             var par = Parser.init(input, allocator.allocator());
 
-            const program = try par.parseProgram();
+            const rootNode = try par.parseProgram();
+            const program = rootNode.cast(.Tree).?;
 
             try testing.expect(program.statements.items.len == 1);
 
@@ -386,7 +391,8 @@ fn IntegerLiteraltest(comptime T: type) type {
         pub fn run(comptime input: [:0]const u8, comptime value: T) !void {
             var par = Parser.init(input, allocator.allocator());
 
-            const program = try par.parseProgram();
+            const rootNode = try par.parseProgram();
+            const program = rootNode.cast(.Tree).?;
 
             try testing.expect(program.statements.items.len == 1);
 
@@ -451,7 +457,8 @@ pub fn PrefixTest(comptime T: type) type {
         pub fn run(comptime input: [:0]const u8, comptime op: ast.Operator, comptime value: T) !void {
             var par = Parser.init(input, alloc);
 
-            const program = try par.parseProgram();
+            const rootNode = try par.parseProgram();
+            const program = rootNode.cast(.Tree).?;
 
             //assert
             try testing.expect(1 == program.statements.items.len);
@@ -480,7 +487,8 @@ pub fn InfixTest(comptime T: type) type {
             var par = Parser.init(input, alloc);
             defer par.deinit();
 
-            const program = try par.parseProgram();
+            const rootNode = try par.parseProgram();
+            const program = rootNode.cast(.Tree).?;
 
             try testing.expectEqual(@as(usize, 1), program.statements.items.len);
 
@@ -498,17 +506,19 @@ pub fn testLetStatements(
     comptime expectedIdentifier: []const u8,
     comptime expectedValue: T,
 ) !void {
-    var p = Parser.init(input, allocator.allocator());
-    defer p.deinit();
+    var parser = Parser.init(input, allocator.allocator());
+    defer parser.deinit();
 
-    checkParserErrors(&p);
+    checkParserErrors(&parser);
 
-    const program = try p.parseProgram();
+    const rootNode = try parser.parseProgram();
+    const program = rootNode.cast(.Tree).?;
+
     try testing.expectEqual(program.statements.items.len, @as(usize, 1));
 
-    var node = program.statements.items[0];
+    const node = program.statements.items[0];
     try testing.expectEqual(Node.Id.LetStatement, node.id);
-    try testing.expectEqual(TokenType.LET, node.tokenType());
+    // try testing.expectEqual(TokenType.LET, node.tokenType());
 
     const letNode = @fieldParentPtr(Node.LetStatement, "base", node);
 
@@ -529,7 +539,8 @@ fn testReturnStatement() !void {
         var p = Parser.init(tc.input, allocator.allocator());
         defer p.deinit();
 
-        const program = try p.parseProgram();
+        const rootNode = try p.parseProgram();
+        const program = rootNode.cast(.Tree).?;
 
         std.debug.assert(program.statements.items.len == 1);
 

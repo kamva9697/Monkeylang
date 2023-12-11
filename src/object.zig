@@ -17,12 +17,14 @@ pub const Object = struct {
         Integer,
         Boolean,
         Null,
+        ReturnValue,
 
         pub fn Type(comptime ty: ObjectType) type {
             return switch (ty) {
                 .Integer => Integer,
                 .Boolean => Boolean,
                 .Null => Null,
+                .ReturnValue => ReturnValue,
             };
         }
     };
@@ -44,6 +46,10 @@ pub const Object = struct {
                 const _bool = cast(self, .Boolean).?;
                 try writer.print("{any}", .{_bool.value});
             },
+            .ReturnValue => {
+                const rv = cast(self, .ReturnValue).?;
+                try rv.value.Inspect(writer);
+            },
             .Null => {
                 try writer.print("null", .{});
             },
@@ -60,5 +66,9 @@ pub const Object = struct {
     };
     pub const Null = struct {
         base: Object = .{ .ty = .Null },
+    };
+    pub const ReturnValue = struct {
+        base: Object = .{ .ty = .ReturnValue },
+        value: *Object,
     };
 };
