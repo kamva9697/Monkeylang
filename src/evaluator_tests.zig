@@ -89,6 +89,61 @@ test "TestReturnStatements" {
     try testReturnStatements(allocator, "7; return 2 * 5; 9;", 10);
 }
 
+test "TestErrorHanlding" {
+    var arena = std.heap.ArenaAllocator.init(gpa.allocator());
+    const allocator = arena.allocator(); // the ast Test Deallocates
+    defer arena.deinit();
+    try testErrorHandling(
+        allocator,
+        "5 + true;",
+        "Type Mismatch: Integer + Boolean",
+    );
+    try testErrorHandling(
+        allocator,
+        "5 + true; 5;",
+        "Type Mismatch: Integer + Boolean",
+    );
+    try testErrorHandling(
+        allocator,
+        "-true",
+        "Unknown Operator: -Boolean",
+    );
+    try testErrorHandling(
+        allocator,
+        "true + false;",
+        "Unknown Operator: Boolean + Boolean",
+    );
+    try testErrorHandling(
+        allocator,
+        "5; true + false; 5",
+        "Unknown Operator: Boolean + Boolean",
+    );
+    try testErrorHandling(
+        allocator,
+        "if (10 > 1) { true + false; }",
+        "Unknown Operator: Boolean + Boolean",
+    );
+    try testErrorHandling(
+        allocator,
+        \\if (10 > 1) {
+        \\    if (10 > 1) {
+        \\      return true + false;
+        \\      }
+        \\  return 1;
+        \\  }
+    ,
+        "Unknown Operator: Boolean + Boolean",
+    );
+}
+
+fn testErrorHandling(alloc: std.mem.Allocator, input: [:0]const u8, expected: []const u8) !void {
+    const evaluated = (try testEval(alloc, input)).?;
+
+    try testing.expectEqual(ObjectType.Error, evaluated.ty);
+    const errorObj = evaluated.cast(.Error).?;
+    try testing.expectEqualStrings(expected, errorObj.message);
+}
+
 fn testReturnStatements(alloc: std.mem.Allocator, input: [:0]const u8, expected: i64) !void {
     const evaluated = (try testEval(alloc, input)).?;
     try testIntegerObject(evaluated, expected);

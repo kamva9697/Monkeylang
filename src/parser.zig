@@ -24,8 +24,13 @@ pub const Parser = struct {
     pub const prefixParseFn = *const fn (*Parser) anyerror!?*Node;
     pub const infixParseFn = *const fn (*Parser, ?*Node) anyerror!?*Node;
 
-    // TODO: Improve handling of Parser Errors
-    pub const ParserError = error{ NoPrefixParseFn, UnexpectedToken, ParameterListTooLong };
+    pub const ParserError = error{
+        NoPrefixParseFn,
+        UnexpectedToken,
+        ParameterListTooLong,
+        TypeMismatch,
+        UnknownOperator,
+    };
 
     pub const ParserErrorContext = struct {
         err: ParserError,
@@ -140,7 +145,7 @@ pub const Parser = struct {
             leftExprNode = try unwrapped_prefixFn(self);
         } else {
             // Add Error Context
-            try self.noPrefixParseFn(self.curToken.Type);
+            try self.noPrefixParseFnError(self.curToken.Type);
             return null;
         }
 
@@ -502,7 +507,7 @@ pub const Parser = struct {
         };
     }
 
-    pub fn noPrefixParseFn(self: *Parser, tok: TokenType) !void {
+    pub fn noPrefixParseFnError(self: *Parser, tok: TokenType) !void {
         var errCtx = ParserErrorContext{ .err = ParserError.NoPrefixParseFn, .msg = undefined };
 
         const msg = try std.fmt.allocPrint(self.arena.allocator(), "Parser Error: No Prefix function found for {any}", .{tok});

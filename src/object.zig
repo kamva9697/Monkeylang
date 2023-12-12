@@ -18,6 +18,7 @@ pub const Object = struct {
         Boolean,
         Null,
         ReturnValue,
+        Error,
 
         pub fn Type(comptime ty: ObjectType) type {
             return switch (ty) {
@@ -25,6 +26,16 @@ pub const Object = struct {
                 .Boolean => Boolean,
                 .Null => Null,
                 .ReturnValue => ReturnValue,
+                .Error => Error,
+            };
+        }
+        pub fn toString(ty: ObjectType) []const u8 {
+            return switch (ty) {
+                .Integer => "Integer",
+                .Boolean => "Boolean",
+                .Null => "Null",
+                .ReturnValue => "ReturnValue",
+                .Error => "Error",
             };
         }
     };
@@ -53,6 +64,10 @@ pub const Object = struct {
             .Null => {
                 try writer.print("null", .{});
             },
+            .Error => {
+                const err = cast(self, .Error).?;
+                try writer.print("Error: {s}", .{err.message});
+            },
         }
     }
 
@@ -70,5 +85,10 @@ pub const Object = struct {
     pub const ReturnValue = struct {
         base: Object = .{ .ty = .ReturnValue },
         value: *Object,
+    };
+
+    pub const Error = struct {
+        base: Object = .{ .ty = .Error },
+        message: []const u8,
     };
 };

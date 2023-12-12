@@ -87,6 +87,15 @@ pub fn eval(alloc: Allocator, node: *Ast.Node) anyerror!?*Object {
     };
 }
 
+pub fn newError(alloc: Allocator, comptime format: []const u8, args: anytype) !*Object {
+    var errorObj = try alloc.create(Object.Error);
+    const msg = try std.fmt.allocPrint(alloc, format, args);
+    errorObj.* = Object.Error{
+        .message = msg,
+    };
+    return &errorObj.base;
+}
+
 pub fn evalProgram(alloc: Allocator, tree: []*Node) !?*Object {
     var result: ?*Object = null;
 
@@ -96,6 +105,9 @@ pub fn evalProgram(alloc: Allocator, tree: []*Node) !?*Object {
         if (result.?.ty == .ReturnValue) {
             const returnValue = result.?.cast(.ReturnValue).?;
             return returnValue.value;
+        }
+        if (result.?.ty == .Error) {
+            return result.?;
         }
     }
     return result;
@@ -107,7 +119,7 @@ pub fn evalBlock(alloc: Allocator, block: *Node.Block) !?*Object {
     for (block.statements.items) |stmt| {
         result = (try eval(alloc, stmt)).?;
 
-        if (result.?.ty == .ReturnValue) {
+        if (result.?.ty == .ReturnValue or result.?.ty == .Error) {
             return result.?;
         }
     }
@@ -144,6 +156,13 @@ pub fn evalInfixExpression(
     right: *Object,
     left: *Object,
 ) !*Object {
+    if (right.ty != left.ty) {
+        return newError(
+            alloc,
+            "Type Mismatch: {s} {s} {s}",
+            .{ left.ty.toString(), op.toString(), right.ty.toString() },
+        );
+    }
     if (right.ty == .Integer and left.ty == .Integer) {
         return try evalIntegerInfixExpressions(
             alloc,
@@ -174,11 +193,26 @@ pub fn evalInfixExpression(
                 );
                 return &obj.base;
             },
-            else => unreachable,
+            else => newError(
+                alloc,
+                "Unknown Operator: {s} {s} {s}",
+                .{
+                    left.ty.toString(),
+                    op.toString(),
+                    right.ty.toString(),
+                },
+            ),
         };
     }
-    var obj = try createObject(Object.Null, alloc, NULL_VALUE);
-    return &obj.base;
+    return newError(
+        alloc,
+        "Unknown Operator: {s} {s} {s}",
+        .{
+            left.ty.toString(),
+            op.toString(),
+            right.ty.toString(),
+        },
+    );
 }
 
 pub fn evalIntegerInfixExpressions(
@@ -266,8 +300,11 @@ pub fn evalIntegerInfixExpressions(
             return &obj.base;
         },
         else => {
-            var obj = try createObject(Object.Null, alloc, NULL_VALUE);
-            return &obj.base;
+            return newError(
+                alloc,
+                "Unkown Operator: {s} {s} {s}",
+                .{ left.ty.toString(), op.toString(), right.ty.toString() },
+            );
         },
     };
 }
@@ -281,8 +318,7 @@ pub fn evalPrefixExpressions(
         .not => try evalBangOperatorExpressions(alloc, right),
         .minus => try evalMinusOperatorExpressions(alloc, right),
         else => {
-            var obj = try createObject(Object.Null, alloc, NULL_VALUE);
-            return &obj.base;
+            return newError(alloc, "Unkown Operator: {s}{s}", .{ op.toString(), right.ty.toString() });
         },
     };
 }
@@ -291,9 +327,13 @@ pub fn evalMinusOperatorExpressions(
     alloc: Allocator,
     right: *Object,
 ) !*Object {
+    const op: Ast.Operator = .minus;
     if (right.ty != .Integer) {
-        var obj = try createObject(Object.Null, alloc, NULL_VALUE);
-        return &obj.base;
+        return newError(
+            alloc,
+            "Unknown Operator: {s}{s}",
+            .{ op.toString(), right.ty.toString() },
+        );
     }
 
     const boolNode = right.cast(.Integer).?;
