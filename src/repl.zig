@@ -6,12 +6,29 @@ const token = @import("token.zig");
 const equal = std.mem.eql;
 const Prompt = ">> ";
 const evaluator = @import("evaluator.zig");
+const Environment = @import("environment.zig").Environment;
+const _Object = @import("object.zig");
+const Object = _Object.Object;
+
+pub fn main() !void {
+    print("Hello this is the Monkey-lang, Code your world, one banana at a time\n", .{});
+    print("Start typing, Monkey-style :) \n\n", .{});
+
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    var arena = std.heap.ArenaAllocator.init(gpa.allocator());
+    defer arena.deinit();
+
+    try start(arena.allocator());
+}
 
 pub fn start(gpa: std.mem.Allocator) !void {
     var bufIn: [1024]u8 = undefined;
     var bufOut = std.ArrayList(u8).init(gpa);
     var reader = std.io.getStdIn().reader();
     const writer = bufOut.writer();
+    var env = try gpa.create(Environment);
+    env.store = std.StringHashMap(*Object).init(gpa);
+    env.outer = null;
 
     while (true) {
         print("{s}", .{Prompt});
@@ -28,9 +45,9 @@ pub fn start(gpa: std.mem.Allocator) !void {
             continue;
         }
 
-        const evaluated = try evaluator.eval(gpa, program);
+        const evaluated = try evaluator.eval(gpa, program, env);
         if (evaluated) |evaled| {
-            try evaled.Inspect(writer);
+            try evaled.Inspect(gpa, writer);
         }
 
         // try program.toString(writer);
@@ -44,15 +61,4 @@ pub fn printParserErrors(errors: anytype) !void {
     for (errors) |err| {
         print("Error: {s}\n", .{err.msg});
     }
-}
-
-pub fn main() !void {
-    print("Hello this is the Monkey-lang, Code your world, one banana at a time\n", .{});
-    print("Start typing, Monkey-style :) \n\n", .{});
-
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    var arena = std.heap.ArenaAllocator.init(gpa.allocator());
-    defer arena.deinit();
-
-    try start(arena.allocator());
 }

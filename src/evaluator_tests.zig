@@ -8,6 +8,7 @@ const Object = _Object.Object;
 const ObjectType = Object.ObjectType;
 const evaluator = @import("evaluator.zig");
 const testing = std.testing;
+const Environment = @import("environment.zig").Environment;
 
 /// Global Allocator
 var gpa = std.heap.GeneralPurposeAllocator(.{}){};
@@ -125,6 +126,11 @@ test "TestErrorHanlding" {
     );
     try testErrorHandling(
         allocator,
+        "foobar",
+        "Identifier not found: foobar",
+    );
+    try testErrorHandling(
+        allocator,
         \\if (10 > 1) {
         \\    if (10 > 1) {
         \\      return true + false;
@@ -134,6 +140,46 @@ test "TestErrorHanlding" {
     ,
         "Unknown Operator: Boolean + Boolean",
     );
+}
+
+test "TestLetStatement" {
+    var arena = std.heap.ArenaAllocator.init(gpa.allocator());
+    const allocator = arena.allocator(); // the ast Test Deallocates
+    defer arena.deinit();
+    try testLetStatement(allocator, "let a = 5; a;", 5);
+    try testLetStatement(allocator, "let a = 5 * 5; a;", 25);
+    try testLetStatement(allocator, "let a = 5; let b = a; b;", 5);
+    try testLetStatement(allocator, "let a = 5; let b = a; let c = a + b + 5; c;", 15);
+}
+
+test "TestFunction" {
+    var arena = std.heap.ArenaAllocator.init(gpa.allocator());
+    const allocator = arena.allocator(); // the ast Test Deallocates
+    defer arena.deinit();
+    try testFunction(allocator, "fn(x) { x + 2; };");
+}
+
+fn testFunction(alloc: std.mem.Allocator, input: [:0]const u8) !void {
+    var buf = std.ArrayList(u8).init(alloc);
+    const evaluated = (try testEval(alloc, input)).?;
+
+    try testing.expectEqual(ObjectType.Function, evaluated.ty);
+    const fnObj = evaluated.cast(.Function).?;
+
+    try testing.expectEqual(fnObj.parameters.len, 1);
+    try (&fnObj.parameters[0].base).toString(buf.writer()); // upcast
+    try testing.expectEqualStrings("x", buf.items);
+
+    const expectedBody = "(x + 2)";
+
+    buf.clearRetainingCapacity(); // clear previous use
+    try (&fnObj.body.base).toString(buf.writer()); // upcast
+    try testing.expectEqualStrings(expectedBody, buf.items);
+}
+
+fn testLetStatement(alloc: std.mem.Allocator, input: [:0]const u8, expected: i64) !void {
+    const evaluated = (try testEval(alloc, input)).?;
+    try testIntegerObject(evaluated, expected);
 }
 
 fn testErrorHandling(alloc: std.mem.Allocator, input: [:0]const u8, expected: []const u8) !void {
@@ -180,11 +226,13 @@ fn testIntegerExpressions(alloc: std.mem.Allocator, input: [:0]const u8, expecte
 
 fn testEval(alloc: std.mem.Allocator, input: [:0]const u8) !?*Object {
     var parser = Parser.init(input, alloc);
+    var envPtr = try alloc.create(Environment);
+    envPtr.store = std.StringHashMap(*Object).init(alloc);
+    envPtr.outer = null;
     defer parser.deinit();
     const rootNode = (try parser.parseProgram());
-    const astTree = rootNode.cast(.Tree).?;
 
-    return (try evaluator.evalProgram(alloc, astTree.statements.items)).?;
+    return (try evaluator.eval(alloc, rootNode, envPtr)).?;
 }
 
 fn testIntegerObject(obj: *Object, expected: i64) !void {

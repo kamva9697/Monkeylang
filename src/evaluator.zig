@@ -8,6 +8,7 @@ const Object = _Object.Object;
 const ObjectType = Object.ObjectType;
 const Allocator = std.mem.Allocator;
 const Math = std.math;
+const Environment = @import("environment.zig").Environment;
 
 // Interned values
 pub const TRUE_VALUE = Object.Boolean{ .value = true };
@@ -15,11 +16,26 @@ pub const FALSE_VALUE = Object.Boolean{ .value = false };
 pub const NULL_VALUE = Object.Null{};
 
 // Todo: Block, FunctionLiteral,
-pub fn eval(alloc: Allocator, node: *Ast.Node) anyerror!?*Object {
+pub fn eval(
+    alloc: Allocator,
+    node: *Ast.Node,
+    env: *Environment,
+) anyerror!?*Object {
     return switch (node.id) {
         .Tree => {
             const rootNode = node.cast(.Tree).?;
-            return try evalProgram(alloc, rootNode.statements.items);
+            return try evalProgram(alloc, rootNode.statements.items, env);
+        },
+        .Identifier => {
+            return try evalIdentifier(alloc, node, env);
+        },
+        .LetStatement => {
+            const letStmt = node.cast(.LetStatement).?;
+            const val = (try eval(alloc, letStmt.value.?, env)).?;
+            if (isError(val)) {
+                return val;
+            }
+            return try env.set(letStmt.name.value, val);
         },
         .IntegerLiteral => {
             const intNode = node.cast(.IntegerLiteral).?;
@@ -44,14 +60,14 @@ pub fn eval(alloc: Allocator, node: *Ast.Node) anyerror!?*Object {
         .PrefixExpression => {
             const prefNode = node.cast(.PrefixExpression).?;
 
-            const right = try eval(alloc, prefNode.rightExprPtr.?);
+            const right = try eval(alloc, prefNode.rightExprPtr.?, env);
             return try evalPrefixExpressions(alloc, prefNode.operator, right.?);
         },
         .InfixExpression => {
             const infixNode = node.cast(.InfixExpression).?;
 
-            const left = try eval(alloc, infixNode.leftExprPtr.?);
-            const right = try eval(alloc, infixNode.rightExprPtr.?);
+            const left = try eval(alloc, infixNode.leftExprPtr.?, env);
+            const right = try eval(alloc, infixNode.rightExprPtr.?, env);
             return try evalInfixExpression(
                 alloc,
                 infixNode.operator,
@@ -64,15 +80,42 @@ pub fn eval(alloc: Allocator, node: *Ast.Node) anyerror!?*Object {
             return evalBlock(
                 alloc,
                 blockNode,
+                env,
             );
         },
         .IfExpression => {
             const ifNode = node.cast(.IfExpression).?;
-            return try evalIfExpression(alloc, ifNode);
+            return try evalIfExpression(alloc, ifNode, env);
+        },
+        .FunctionLiteral => {
+            const funcNode = node.cast(.FunctionLiteral).?;
+            var obj = try createObject(
+                Object.Function,
+                alloc,
+                Object.Function{
+                    .parameters = funcNode.parameters,
+                    .body = funcNode.body,
+                    .env = env,
+                },
+            );
+            return &obj.base;
+        },
+        .CallExpression => {
+            const funcNode = node.cast(.CallExpression).?;
+            const callNode = (try eval(alloc, funcNode.function, env)).?;
+            if (isError(callNode)) {
+                return callNode;
+            }
+            const args = try evalExpressions(alloc, funcNode.arguments, env);
+            if (args.len == 1 and isError(args[0])) {
+                return args[0];
+            }
+
+            return try applyFunction(alloc, callNode, args);
         },
         .ReturnStatement => {
             const returnStatement = node.cast(.ReturnStatement).?;
-            const rvNode = (try eval(alloc, returnStatement.returnValue.?)).?;
+            const rvNode = (try eval(alloc, returnStatement.returnValue.?, env)).?;
             var obj = try createObject(
                 Object.ReturnValue,
                 alloc,
@@ -80,11 +123,67 @@ pub fn eval(alloc: Allocator, node: *Ast.Node) anyerror!?*Object {
             );
             return &obj.base;
         },
-        else => {
-            var obj = try createObject(Object.Null, alloc, NULL_VALUE);
-            return &obj.base;
-        },
     };
+}
+
+pub fn applyFunction(alloc: Allocator, fnObj: *Object, args: []*Object) !*Object {
+    const function = fnObj.cast(.Function) orelse {
+        return newError(alloc, "Not a function: {any}", .{fnObj.ty});
+    };
+
+    const extendedEnv = try extendedEnvFunction(alloc, fnObj, args);
+    const evaluated = (try eval(alloc, &function.body.base, extendedEnv)).?;
+    return unwrapReturnValue(evaluated);
+}
+
+pub fn extendedEnvFunction(alloc: Allocator, func: *Object, args: []*Object) !*Environment {
+    const funcObj = func.cast(.Function).?;
+    var env = try Environment.newEnclosedEnvironment(alloc, funcObj.env);
+
+    for (funcObj.parameters, 0..) |param, idx| {
+        _ = try env.set(param.value, args[idx]);
+    }
+
+    return env;
+}
+
+fn unwrapReturnValue(obj: *Object) *Object {
+    const returnValue = obj.cast(.ReturnValue);
+    if (returnValue) |rv| {
+        return rv.value;
+    }
+
+    return obj;
+}
+
+pub fn evalExpressions(
+    alloc: Allocator,
+    exps: []*Ast.Node,
+    env: *Environment,
+) ![]*Object {
+    var result = std.ArrayList(*Object).init(alloc);
+
+    for (exps) |e| {
+        const evaled = (try eval(alloc, e, env)).?;
+        if (isError(evaled)) {
+            try result.append(evaled);
+            return result.items;
+        }
+        try result.append(evaled);
+    }
+    return result.items;
+}
+
+pub fn evalIdentifier(alloc: Allocator, node: *Ast.Node, env: *Environment) !*Object {
+    const identNode = node.cast(.Identifier).?;
+    const val = env.get(identNode.value) orelse
+        newError(alloc, "Identifier not found: {s}", .{identNode.value});
+
+    return val;
+}
+
+pub fn isError(obj: *Object) bool {
+    return if (obj.ty == .Error) true else false;
 }
 
 pub fn newError(alloc: Allocator, comptime format: []const u8, args: anytype) !*Object {
@@ -96,11 +195,11 @@ pub fn newError(alloc: Allocator, comptime format: []const u8, args: anytype) !*
     return &errorObj.base;
 }
 
-pub fn evalProgram(alloc: Allocator, tree: []*Node) !?*Object {
+pub fn evalProgram(alloc: Allocator, tree: []*Node, env: *Environment) !?*Object {
     var result: ?*Object = null;
 
     for (tree) |stmt| {
-        result = (try eval(alloc, stmt)).?;
+        result = (try eval(alloc, stmt, env)).?;
 
         if (result.?.ty == .ReturnValue) {
             const returnValue = result.?.cast(.ReturnValue).?;
@@ -113,11 +212,11 @@ pub fn evalProgram(alloc: Allocator, tree: []*Node) !?*Object {
     return result;
 }
 
-pub fn evalBlock(alloc: Allocator, block: *Node.Block) !?*Object {
+pub fn evalBlock(alloc: Allocator, block: *Node.Block, env: *Environment) !?*Object {
     var result: ?*Object = null;
 
     for (block.statements.items) |stmt| {
-        result = (try eval(alloc, stmt)).?;
+        result = (try eval(alloc, stmt, env)).?;
 
         if (result.?.ty == .ReturnValue or result.?.ty == .Error) {
             return result.?;
@@ -126,13 +225,13 @@ pub fn evalBlock(alloc: Allocator, block: *Node.Block) !?*Object {
     return result;
 }
 
-pub fn evalIfExpression(alloc: Allocator, ifNode: *Node.IfExpression) !?*Object {
-    const condition = (try eval(alloc, ifNode.condition)).?;
+pub fn evalIfExpression(alloc: Allocator, ifNode: *Node.IfExpression, env: *Environment) !?*Object {
+    const condition = (try eval(alloc, ifNode.condition, env)).?;
 
     if (isTruthy(condition)) {
-        return try eval(alloc, &ifNode.consequence.base);
+        return try eval(alloc, &ifNode.consequence.base, env);
     } else if (ifNode.alternative) |alternative| {
-        return try eval(alloc, &alternative.base);
+        return try eval(alloc, &alternative.base, env);
     } else {
         var obj = try createObject(Object.Null, alloc, NULL_VALUE);
         return &obj.base;

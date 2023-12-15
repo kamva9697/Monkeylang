@@ -151,7 +151,6 @@ pub const Node = struct {
     pub const FunctionLiteral = struct {
         base: Node = .{ .id = .FunctionLiteral },
         token: Token,
-        // limit parameter list to 127
         parameters: []*Identifier,
         body: *Block,
     };
