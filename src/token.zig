@@ -51,7 +51,14 @@ pub const TokenType = enum {
     EOF,
 };
 
-pub const Token = struct { Type: TokenType, Literal: []const u8 };
+pub const Token = struct {
+    Type: TokenType,
+    Literal: []const u8,
+
+    pub inline fn isEqual(self: Token, other: TokenType) bool {
+        return self.Type == other;
+    }
+};
 
 pub const keywords = std.ComptimeStringMap(TokenType, .{
     .{ "fn", .FUNCTION },
