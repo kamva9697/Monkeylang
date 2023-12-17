@@ -27,8 +27,6 @@ pub fn start(gpa: std.mem.Allocator) !void {
     var bufOut = std.ArrayList(u8).init(gpa);
     const writer = bufOut.writer();
     const env = try Environment.newEnvironment(gpa);
-    const internPool = evaluator.InternPool(gpa);
-    _ = internPool;
 
     while (true) {
         print("{s}", .{Prompt});

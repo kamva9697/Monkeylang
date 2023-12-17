@@ -100,7 +100,7 @@ pub const Parser = struct {
         return p;
     }
 
-    pub fn nextToken(self: *Parser) void {
+    pub inline fn nextToken(self: *Parser) void {
         self.curToken = self.peekToken;
         self.peekToken = self.lex.nextToken();
     }
@@ -120,7 +120,7 @@ pub const Parser = struct {
         return treePtr.toNode();
     }
 
-    pub fn parseStatement(self: *Parser) !?*Node {
+    pub inline fn parseStatement(self: *Parser) !?*Node {
         return switch (self.curToken.Type) {
             .LET => try self.parseLetStatement(),
             .RETURN => try self.parseReturnStatement(),
@@ -442,10 +442,10 @@ pub const Parser = struct {
     }
 
     ///////////// Utilities ////////////////////////
-    pub fn peekPrecedence(self: *Parser) Precedence {
+    pub inline fn peekPrecedence(self: *Parser) Precedence {
         return Precedence.fromTokenType(self.peekToken.Type);
     }
-    pub fn curPrecedence(self: *Parser) Precedence {
+    pub inline fn curPrecedence(self: *Parser) Precedence {
         return Precedence.fromTokenType(self.curToken.Type);
     }
 
@@ -476,13 +476,13 @@ pub const Parser = struct {
         try self.errors.append(self.arena.allocator(), ctx);
     }
 
-    pub fn registerPrefix(self: *Parser, currentToken: TokenType, prefixFunc: prefixParseFn) void {
+    pub inline fn registerPrefix(self: *Parser, currentToken: TokenType, prefixFunc: prefixParseFn) void {
         self.prefixParseFns.put(self.arena.allocator(), currentToken, prefixFunc) catch |err| {
             std.debug.panic("Error: {any}", .{err});
         };
     }
 
-    pub fn registerInfix(self: *Parser, currentToken: TokenType, infixFunc: infixParseFn) void {
+    pub inline fn registerInfix(self: *Parser, currentToken: TokenType, infixFunc: infixParseFn) void {
         self.infixParseFns.put(self.arena.allocator(), currentToken, infixFunc) catch |err| {
             std.debug.panic("Error: {any}", .{err});
         };

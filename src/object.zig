@@ -22,7 +22,7 @@ pub const Object = struct {
         Function,
         Error,
 
-        pub fn Type(comptime ty: ObjectType) type {
+        pub inline fn Type(comptime ty: ObjectType) type {
             return switch (ty) {
                 .Integer => Integer,
                 .Boolean => Boolean,
@@ -32,7 +32,7 @@ pub const Object = struct {
                 .Error => Error,
             };
         }
-        pub fn toString(ty: ObjectType) []const u8 {
+        pub inline fn toString(ty: ObjectType) []const u8 {
             return switch (ty) {
                 .Integer => "Integer",
                 .Boolean => "Boolean",
@@ -48,7 +48,7 @@ pub const Object = struct {
         return @fieldParentPtr(ty.Type(), "base", base);
     }
 
-    pub fn create(comptime T: type, alloc: Allocator, value: T) !*T {
+    pub inline fn create(comptime T: type, alloc: Allocator, value: T) !*T {
         const obj = try alloc.create(T);
         obj.* = value;
         return obj;
@@ -57,22 +57,22 @@ pub const Object = struct {
     pub fn Inspect(self: *Object, alloc: Allocator, writer: anytype) !void {
         switch (self.ty) {
             .Integer => {
-                const int = cast(self, .Integer).?;
+                const int = cast(self, .Integer);
                 try writer.print("{d}", .{int.value});
             },
             .Boolean => {
-                const _bool = cast(self, .Boolean).?;
+                const _bool = cast(self, .Boolean);
                 try writer.print("{any}", .{_bool.value});
             },
             .ReturnValue => {
-                const rv = cast(self, .ReturnValue).?;
+                const rv = cast(self, .ReturnValue);
                 try rv.value.Inspect(alloc, writer);
             },
             .Null => {
                 try writer.print("null", .{});
             },
             .Function => {
-                const func = cast(self, .Function).?;
+                const func = cast(self, .Function);
 
                 var params = std.ArrayList(u8).init(alloc);
                 const paramsWriter = params.writer();
@@ -88,7 +88,7 @@ pub const Object = struct {
                 try writer.writeAll("\n");
             },
             .Error => {
-                const err = cast(self, .Error).?;
+                const err = cast(self, .Error);
                 try writer.print("Error: {s}", .{err.message});
             },
         }
