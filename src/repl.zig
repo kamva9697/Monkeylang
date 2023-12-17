@@ -23,16 +23,19 @@ pub fn main() !void {
 
 pub fn start(gpa: std.mem.Allocator) !void {
     var bufIn: [1024]u8 = undefined;
-    var bufOut = std.ArrayList(u8).init(gpa);
     var reader = std.io.getStdIn().reader();
+    var bufOut = std.ArrayList(u8).init(gpa);
     const writer = bufOut.writer();
-    var env = try gpa.create(Environment);
-    env.store = std.StringHashMap(*Object).init(gpa);
-    env.outer = null;
+    const env = try Environment.newEnvironment(gpa);
+    const internPool = evaluator.InternPool(gpa);
+    _ = internPool;
 
     while (true) {
         print("{s}", .{Prompt});
-        const line = try reader.readUntilDelimiterOrEof(&bufIn, '\n');
+        const line = reader.readUntilDelimiterOrEof(&bufIn, '\n') catch {
+            std.debug.print("Input too Long, input buffer size is 1 Kib\n", .{});
+            continue;
+        };
         const input = std.mem.trim(u8, line.?, "\r\n");
 
         const stripLine = try std.mem.concatWithSentinel(gpa, u8, &[_][]const u8{input}, 0);

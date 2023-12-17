@@ -164,7 +164,7 @@ fn testFunction(alloc: std.mem.Allocator, input: [:0]const u8) !void {
     const evaluated = (try testEval(alloc, input)).?;
 
     try testing.expectEqual(ObjectType.Function, evaluated.ty);
-    const fnObj = evaluated.cast(.Function).?;
+    const fnObj = evaluated.cast(.Function);
 
     try testing.expectEqual(fnObj.parameters.len, 1);
     try (&fnObj.parameters[0].base).toString(buf.writer()); // upcast
@@ -186,7 +186,7 @@ fn testErrorHandling(alloc: std.mem.Allocator, input: [:0]const u8, expected: []
     const evaluated = (try testEval(alloc, input)).?;
 
     try testing.expectEqual(ObjectType.Error, evaluated.ty);
-    const errorObj = evaluated.cast(.Error).?;
+    const errorObj = evaluated.cast(.Error);
     try testing.expectEqualStrings(expected, errorObj.message);
 }
 
@@ -237,12 +237,12 @@ fn testEval(alloc: std.mem.Allocator, input: [:0]const u8) !?*Object {
 
 fn testIntegerObject(obj: *Object, expected: i64) !void {
     try testing.expectEqual(ObjectType.Integer, obj.ty);
-    const integerValue = obj.cast(.Integer).?;
+    const integerValue = obj.cast(.Integer);
     try testing.expectEqual(expected, integerValue.value);
 }
 
 fn testBooleanObject(obj: *Object, expected: bool) !void {
     try testing.expectEqual(ObjectType.Boolean, obj.ty);
-    const boolValue = obj.cast(.Boolean).?;
+    const boolValue = obj.cast(.Boolean);
     try testing.expectEqual(expected, boolValue.value);
 }

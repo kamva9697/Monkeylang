@@ -10,21 +10,27 @@ const Allocator = std.mem.Allocator;
 const Math = std.math;
 
 pub const Environment = struct {
+    pub const Self = @This();
     store: std.StringHashMap(
         *Object,
     ),
-    outer: ?*Environment = null,
+    outer: ?*Environment,
+
+    fn init(alloc: Allocator, outer_env: ?*Environment) !*Self {
+        const newEnv = try alloc.create(Environment);
+        newEnv.* = Environment{
+            .store = std.StringHashMap(*Object).init(alloc),
+            .outer = outer_env,
+        };
+        return newEnv;
+    }
 
     pub fn newEnclosedEnvironment(alloc: Allocator, outer: *Environment) !*Environment {
-        var env = try newEnvironment(alloc);
-        env.outer = outer;
-        return env;
+        return init(alloc, outer);
     }
 
     pub fn newEnvironment(alloc: Allocator) !*Environment {
-        var newEnv = try alloc.create(Environment);
-        newEnv.store = std.StringHashMap(*Object).init(alloc);
-        return newEnv;
+        return init(alloc, null);
     }
 
     pub fn get(self: *Environment, name: []const u8) ?*Object {

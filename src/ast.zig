@@ -81,92 +81,154 @@ pub const Node = struct {
 
     ////// Concrete Types ///////////////
     pub const Tree = struct {
+        pub const Self = @This();
+
         base: Node = .{ .id = .Tree },
         statements: std.ArrayList(*Node),
 
-        pub fn deinit(self: *Tree) void {
-            self.statements.deinit();
+        pub fn init(alloc: std.mem.Allocator) !*Self {
+            const tree = try alloc.create(Self);
+            tree.* = Tree{
+                .statements = std.ArrayList(*Node).init(alloc),
+            };
+            return tree;
+        }
+
+        pub inline fn toNode(self: *Self) *Node {
+            return &self.base;
         }
     };
     pub const ReturnStatement = struct {
+        pub const Self = @This();
         base: Node = .{ .id = .ReturnStatement },
         token: Token,
         returnValue: ?*Node,
+
+        pub inline fn toNode(self: *Self) *Node {
+            return &self.base;
+        }
     };
 
     pub const LetStatement = struct {
+        pub const Self = @This();
         base: Node = .{ .id = .LetStatement },
         token: Token,
         name: Identifier,
         value: ?*Node,
+
+        pub inline fn toNode(self: *Self) *Node {
+            return &self.base;
+        }
     };
 
     pub const Identifier = struct {
+        pub const Self = @This();
         base: Node = .{ .id = .Identifier },
         token: Token,
         value: []const u8,
+
+        pub inline fn toNode(self: *Self) *Node {
+            return &self.base;
+        }
     };
 
     pub const IntegerLiteral = struct {
+        pub const Self = @This();
         base: Node = .{ .id = .IntegerLiteral },
         token: Token,
         value: u32,
+
+        pub inline fn toNode(self: *Self) *Node {
+            return &self.base;
+        }
     };
 
     pub const PrefixExpression = struct {
+        pub const Self = @This();
         base: Node = .{ .id = .PrefixExpression },
         token: Token,
         operator: Operator,
         rightExprPtr: ?*Node,
+
+        pub inline fn toNode(self: *Self) *Node {
+            return &self.base;
+        }
     };
 
     pub const InfixExpression = struct {
+        pub const Self = @This();
         base: Node = .{ .id = .InfixExpression },
         token: Token,
         leftExprPtr: ?*Node,
         operator: Operator,
         rightExprPtr: ?*Node,
+
+        pub inline fn toNode(self: *Self) *Node {
+            return &self.base;
+        }
     };
 
     pub const Boolean = struct {
+        pub const Self = @This();
         base: Node = .{ .id = .Boolean },
         token: Token,
         value: bool,
+
+        pub inline fn toNode(self: *Self) *Node {
+            return &self.base;
+        }
     };
 
     pub const IfExpression = struct {
+        pub const Self = @This();
         base: Node = .{ .id = .IfExpression },
         token: Token,
         condition: *Node,
         consequence: *Block,
         alternative: ?*Block,
+
+        pub inline fn toNode(self: *Self) *Node {
+            return &self.base;
+        }
     };
 
     pub const Block = struct {
+        pub const Self = @This();
         base: Node = .{ .id = .Block },
         token: Token,
         statements: std.ArrayListUnmanaged(*Node),
+
+        pub inline fn toNode(self: *Self) *Node {
+            return &self.base;
+        }
     };
 
     pub const FunctionLiteral = struct {
+        pub const Self = @This();
         base: Node = .{ .id = .FunctionLiteral },
         token: Token,
         parameters: []*Identifier,
         body: *Block,
+
+        pub inline fn toNode(self: *Self) *Node {
+            return &self.base;
+        }
     };
 
     pub const CallExpression = struct {
+        pub const Self = @This();
         base: Node = .{ .id = .CallExpression },
         token: Token,
         function: *Node,
         arguments: []*Node,
+
+        pub inline fn toNode(self: *Self) *Node {
+            return &self.base;
+        }
     };
 
-    pub fn cast(base: *Node, comptime id: Id) ?*id.Type() {
-        if (base.id == id) {
-            return @fieldParentPtr(id.Type(), "base", base);
-        }
-        return null;
+    pub inline fn cast(base: *Node, comptime id: Id) *id.Type() {
+        return @fieldParentPtr(id.Type(), "base", base);
     }
 
     pub fn tokenType(base: *Node) TokenType {
@@ -181,14 +243,14 @@ pub const Node = struct {
     pub fn toString(node: *Node, writer: anytype) !void {
         return switch (node.id) {
             .Tree => {
-                const treeNode = node.cast(.Tree).?;
+                const treeNode = node.cast(.Tree);
 
                 for (treeNode.statements.items) |st| {
                     try st.toString(writer);
                 }
             },
             .ReturnStatement => {
-                const returnStatementNode = node.cast(.ReturnStatement).?;
+                const returnStatementNode = node.cast(.ReturnStatement);
 
                 if (returnStatementNode.returnValue) |returnValue| {
                     try writer.writeAll(returnStatementNode.token.Literal);
@@ -201,7 +263,7 @@ pub const Node = struct {
                 }
             },
             .LetStatement => {
-                const letStmtNode = node.cast(.LetStatement).?;
+                const letStmtNode = node.cast(.LetStatement);
 
                 try writer.writeAll(letStmtNode.token.Literal);
                 try writer.writeAll(" ");
@@ -212,16 +274,16 @@ pub const Node = struct {
                 try writer.writeAll(";");
             },
             .Identifier => {
-                const identifierNode = node.cast(.Identifier).?;
+                const identifierNode = node.cast(.Identifier);
                 try writer.writeAll(identifierNode.value);
             },
             .IntegerLiteral => {
-                const integerLiteral = node.cast(.IntegerLiteral).?;
+                const integerLiteral = node.cast(.IntegerLiteral);
 
                 try writer.print("{d}", .{integerLiteral.value});
             },
             .PrefixExpression => {
-                const prefixExpr = node.cast(.PrefixExpression).?;
+                const prefixExpr = node.cast(.PrefixExpression);
 
                 try writer.writeAll("(");
                 try writer.writeAll(prefixExpr.operator.toString());
@@ -232,7 +294,7 @@ pub const Node = struct {
                 try writer.writeAll(")");
             },
             .InfixExpression => {
-                const infixExpr = node.cast(.InfixExpression).?;
+                const infixExpr = node.cast(.InfixExpression);
 
                 try writer.writeAll("(");
                 if (infixExpr.leftExprPtr) |leftExpr| {
@@ -247,12 +309,12 @@ pub const Node = struct {
                 try writer.writeAll(")");
             },
             .Boolean => {
-                const booleanExpr = node.cast(.Boolean).?;
+                const booleanExpr = node.cast(.Boolean);
 
                 try writer.print("{any}", .{booleanExpr.value});
             },
             .IfExpression => {
-                const ifExprPtr = node.cast(.IfExpression).?;
+                const ifExprPtr = node.cast(.IfExpression);
 
                 try writer.writeAll("if");
                 try ifExprPtr.condition.toString(writer);
@@ -265,13 +327,13 @@ pub const Node = struct {
                 }
             },
             .Block => {
-                const blockNode = node.cast(.Block).?;
+                const blockNode = node.cast(.Block);
                 for (blockNode.statements.items) |st| {
                     try st.toString(writer);
                 }
             },
             .FunctionLiteral => {
-                var functionLiteralNode = node.cast(.FunctionLiteral).?;
+                var functionLiteralNode = node.cast(.FunctionLiteral);
 
                 try writer.writeAll(functionLiteralNode.token.Literal);
                 try writer.writeAll("(");
@@ -284,7 +346,7 @@ pub const Node = struct {
                 try (&functionLiteralNode.body.base).toString(writer);
             },
             .CallExpression => {
-                var callExpressionNode = node.cast(.CallExpression).?;
+                var callExpressionNode = node.cast(.CallExpression);
 
                 try callExpressionNode.function.toString(writer);
                 try writer.writeAll("(");
@@ -299,22 +361,6 @@ pub const Node = struct {
         };
     }
 };
-
-///////////// AST //////////////
-// pub const Tree = struct {
-//     statements: std.ArrayList(*Node),
-
-//     pub fn toString(self: *Tree, writer: anytype) !void {
-//         for (self.statements.items) |st| {
-//             try st.toString(writer);
-//         }
-//     }
-
-//     pub fn deinit(self: *Tree) void {
-//         self.statements.deinit();
-//         self.string_ast.deinit();
-//     }
-// };
 
 test "toString" {
     const testing = std.testing;
@@ -340,7 +386,7 @@ test "toString" {
         .value = &identPtr.base,
     };
 
-    const node = &statement.base;
+    const node = statement.toNode();
     try node.toString(buf.writer());
 
     try testing.expect(buf.items.len > 0);

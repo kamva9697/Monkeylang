@@ -259,13 +259,13 @@ pub fn CallExpressionTest(comptime input: [:0]const u8) !void {
     var par = Parser.init(input, alloc);
 
     const rootNode = try par.parseProgram();
-    const program = rootNode.cast(.Tree).?;
+    const program = rootNode.cast(.Tree);
     // checkParserErrors(&par);
 
     try testing.expectEqual(program.statements.items.len, @as(usize, 1));
 
     var node = program.statements.items[0];
-    const callExprNode = node.cast(.CallExpression).?;
+    const callExprNode = node.cast(.CallExpression);
 
     try testIdentifierLiteral(callExprNode.function, "add");
 
@@ -285,11 +285,11 @@ pub fn FunctionParameterTest(
     var par = Parser.init(input, alloc);
 
     const rootNode = try par.parseProgram();
-    const program = rootNode.cast(.Tree).?;
+    const program = rootNode.cast(.Tree);
     // checkParserErrors(&par);
 
     var node = program.statements.items[0];
-    var functionParams = node.cast(.FunctionLiteral).?;
+    var functionParams = node.cast(.FunctionLiteral);
 
     try testing.expectEqual(expected.len, functionParams.parameters.len);
 
@@ -302,7 +302,7 @@ pub fn FunctionLiteralTest(comptime input: [:0]const u8) !void {
     var par = Parser.init(input, alloc);
 
     const rootNode = try par.parseProgram();
-    const program = rootNode.cast(.Tree).?;
+    const program = rootNode.cast(.Tree);
     // checkParserErrors(&par);
 
     //assert
@@ -310,7 +310,7 @@ pub fn FunctionLiteralTest(comptime input: [:0]const u8) !void {
 
     var node = program.statements.items[0];
 
-    var funcLitNode = node.cast(.FunctionLiteral).?;
+    var funcLitNode = node.cast(.FunctionLiteral);
 
     try testing.expectEqual(Node.Id.FunctionLiteral, funcLitNode.base.id);
 
@@ -333,7 +333,7 @@ pub fn IfExpressionTest(comptime input: [:0]const u8) !void {
     var par = Parser.init(input, alloc);
 
     const rootNode = try par.parseProgram();
-    const program = rootNode.cast(.Tree).?;
+    const program = rootNode.cast(.Tree);
     checkParserErrors(&par);
 
     try testing.expectEqual(@as(usize, 1), program.statements.items.len);
@@ -343,7 +343,7 @@ pub fn IfExpressionTest(comptime input: [:0]const u8) !void {
 
     try testing.expectEqual(Node.Id.IfExpression, node.id);
 
-    const expr = node.cast(.IfExpression).?;
+    const expr = node.cast(.IfExpression);
 
     try testInfixExpression([]const u8, expr.condition, "x", .less_than, "y");
 
@@ -377,7 +377,7 @@ pub fn IdentifierLiteralTest(comptime T: type) type {
             var par = Parser.init(input, allocator.allocator());
 
             const rootNode = try par.parseProgram();
-            const program = rootNode.cast(.Tree).?;
+            const program = rootNode.cast(.Tree);
 
             try testing.expect(program.statements.items.len == 1);
 
@@ -392,7 +392,7 @@ fn IntegerLiteraltest(comptime T: type) type {
             var par = Parser.init(input, allocator.allocator());
 
             const rootNode = try par.parseProgram();
-            const program = rootNode.cast(.Tree).?;
+            const program = rootNode.cast(.Tree);
 
             try testing.expect(program.statements.items.len == 1);
 
@@ -404,7 +404,7 @@ fn IntegerLiteraltest(comptime T: type) type {
 fn testIdentifierLiteral(node: *Node, val: []const u8) !void {
     try testing.expectEqual(Node.Id.Identifier, node.id);
 
-    const identifierNode = node.cast(Node.Id.Identifier).?;
+    const identifierNode = node.cast(Node.Id.Identifier);
 
     try testing.expectEqualStrings(val, identifierNode.token.Literal);
 }
@@ -412,7 +412,7 @@ fn testIdentifierLiteral(node: *Node, val: []const u8) !void {
 fn testIntegerLiteral(node: *Node, value: u32) !void {
     var buf: [1024]u8 = undefined;
 
-    const stmt = node.cast(.IntegerLiteral).?;
+    const stmt = node.cast(.IntegerLiteral);
 
     try testing.expectEqual(Node.IntegerLiteral, @TypeOf(stmt.*));
 
@@ -435,7 +435,7 @@ fn testLiteralExpressions(comptime T: type, node: *Node, comptime val: T) !void 
 fn testInfixExpression(comptime T: type, node: *Node, comptime left: T, comptime op: ast.Operator, comptime right: T) !void {
     try testing.expectEqual(Node.Id.InfixExpression, node.id);
 
-    const expr = node.cast(Node.Id.InfixExpression).?;
+    const expr = node.cast(Node.Id.InfixExpression);
 
     try testLiteralExpressions(T, expr.leftExprPtr.?, left);
 
@@ -447,7 +447,7 @@ fn testInfixExpression(comptime T: type, node: *Node, comptime left: T, comptime
 fn testBooleanLiteral(node: *Node, value: bool) !void {
     try testing.expectEqual(Node.Id.Boolean, node.id);
 
-    const expr = node.cast(.Boolean).?;
+    const expr = node.cast(.Boolean);
 
     try testing.expectEqual(value, expr.value);
 }
@@ -458,7 +458,7 @@ pub fn PrefixTest(comptime T: type) type {
             var par = Parser.init(input, alloc);
 
             const rootNode = try par.parseProgram();
-            const program = rootNode.cast(.Tree).?;
+            const program = rootNode.cast(.Tree);
 
             //assert
             try testing.expect(1 == program.statements.items.len);
@@ -467,7 +467,7 @@ pub fn PrefixTest(comptime T: type) type {
 
             try testing.expectEqual(Node.Id.PrefixExpression, node.id);
 
-            const prefixExpressionNode = Node.cast(node, Node.Id.PrefixExpression).?;
+            const prefixExpressionNode = Node.cast(node, Node.Id.PrefixExpression);
 
             try testing.expectEqual(op, prefixExpressionNode.operator);
 
@@ -488,7 +488,7 @@ pub fn InfixTest(comptime T: type) type {
             defer par.deinit();
 
             const rootNode = try par.parseProgram();
-            const program = rootNode.cast(.Tree).?;
+            const program = rootNode.cast(.Tree);
 
             try testing.expectEqual(@as(usize, 1), program.statements.items.len);
 
@@ -512,7 +512,7 @@ pub fn testLetStatements(
     checkParserErrors(&parser);
 
     const rootNode = try parser.parseProgram();
-    const program = rootNode.cast(.Tree).?;
+    const program = rootNode.cast(.Tree);
 
     try testing.expectEqual(program.statements.items.len, @as(usize, 1));
 
@@ -540,7 +540,7 @@ fn testReturnStatement() !void {
         defer p.deinit();
 
         const rootNode = try p.parseProgram();
-        const program = rootNode.cast(.Tree).?;
+        const program = rootNode.cast(.Tree);
 
         std.debug.assert(program.statements.items.len == 1);
 

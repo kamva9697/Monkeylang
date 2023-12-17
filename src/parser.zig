@@ -106,29 +106,22 @@ pub const Parser = struct {
     }
 
     pub fn parseProgram(self: *Parser) !*ast.Node {
-        var tree = try self.arena.child_allocator.create(Node.Tree);
+        var treePtr = try Node.Tree.init(self.arena.allocator());
 
-        tree.* = Node.Tree{
-            .statements = std.ArrayList(*Node).init(self.arena.allocator()),
-        };
-
-        while (self.curToken.Type != .EOF) {
+        while (!self.curTokenIs(.EOF)) {
             if (try self.parseStatement()) |statement| {
-                try tree.statements.append(statement);
+                try treePtr.statements.append(statement);
                 self.nextToken();
             } else {
                 break;
             }
         }
 
-        return &tree.base;
+        return treePtr.toNode();
     }
 
     pub fn parseStatement(self: *Parser) !?*Node {
         return switch (self.curToken.Type) {
-            // TODO: An error should be raised if `parseLetStatement`
-            // returns a null, for then, it means a malformed
-            // let statement
             .LET => try self.parseLetStatement(),
             .RETURN => try self.parseReturnStatement(),
 
@@ -164,8 +157,8 @@ pub const Parser = struct {
     }
 
     pub fn parseInfixExpression(self: *Parser, left: ?*Node) !?*Node {
-        var exprPtr = try self.arena.allocator().create(Node.InfixExpression);
-        exprPtr.* = Node.InfixExpression{
+        var exprNode = try self.arena.allocator().create(Node.InfixExpression);
+        exprNode.* = Node.InfixExpression{
             .token = self.curToken,
             .leftExprPtr = left.?,
             .operator = Operator.fromString(self.curToken.Literal).?,
@@ -174,14 +167,8 @@ pub const Parser = struct {
         const prec = self.curPrecedence();
         self.nextToken();
 
-        // right-assoc
-        // var associativity = switch (exprPtr.operator) {
-        //     .plus => @intFromEnum(prec) - @as(u8, 1),
-        //     else => @intFromEnum(prec),
-        // };
-
-        exprPtr.rightExprPtr = try self.parseExpression(prec);
-        return &exprPtr.base;
+        exprNode.rightExprPtr = try self.parseExpression(prec);
+        return exprNode.toNode();
     }
 
     pub fn parsePrefixExpression(self: *Parser) !?*Node {
@@ -200,7 +187,7 @@ pub const Parser = struct {
 
         exprPtr.rightExprPtr = rightExpr;
 
-        return &exprPtr.base;
+        return exprPtr.toNode();
     }
 
     // Parse Identifiers
@@ -209,7 +196,7 @@ pub const Parser = struct {
 
         nodePtr.* = Node.Identifier{ .token = self.curToken, .value = self.curToken.Literal };
 
-        return &nodePtr.base;
+        return nodePtr.toNode();
     }
 
     pub fn parseGroupedExpression(self: *Parser) !?*Node {
@@ -246,9 +233,9 @@ pub const Parser = struct {
 
         var bodyNode = (try self.parseBlockStatement()).?;
 
-        lit.body = bodyNode.cast(.Block).?;
+        lit.body = bodyNode.cast(.Block);
 
-        return &lit.base;
+        return lit.toNode();
     }
 
     pub fn parseFunctionParameters(self: *Parser) !?[]*Node.Identifier {
@@ -260,7 +247,6 @@ pub const Parser = struct {
         }
         self.nextToken();
 
-        //first Identifier
         var ident = try self.arena.allocator().create(Node.Identifier);
         ident.* = Node.Identifier{
             .token = self.curToken,
@@ -302,7 +288,7 @@ pub const Parser = struct {
 
         litPtr.value = try std.fmt.parseInt(u32, litPtr.token.Literal, 10);
 
-        return &litPtr.base;
+        return litPtr.toNode();
     }
 
     pub fn parseIfExpression(self: *Parser) !?*Node {
@@ -321,17 +307,12 @@ pub const Parser = struct {
 
         ifExprPtr.condition = (try self.parseExpression(.LOWEST)).?;
 
-        // Is the RParen part of a grouped expression?
-        // if (!(try self.expectPeek(TokenType.RPAREN))) {
-        //     return null;
-        // }
-
         if (!(try self.expectPeek(TokenType.LBRACE))) {
             return null;
         }
         var blockNode = (try self.parseBlockStatement()).?;
 
-        ifExprPtr.consequence = blockNode.cast(.Block).?;
+        ifExprPtr.consequence = blockNode.cast(.Block);
 
         if (self.peekTokenIs(TokenType.ELSE)) {
             self.nextToken();
@@ -342,10 +323,10 @@ pub const Parser = struct {
 
             self.nextToken(); // skip '{'
             var altNode = (try self.parseBlockStatement()).?;
-            ifExprPtr.alternative = altNode.cast(.Block).?;
+            ifExprPtr.alternative = altNode.cast(.Block);
         }
 
-        return &ifExprPtr.base;
+        return ifExprPtr.toNode();
     }
 
     pub fn parseCallExpression(self: *Parser, func: ?*Node) !?*Node {
@@ -356,7 +337,7 @@ pub const Parser = struct {
             .arguments = (try self.parseCallArguments()).?,
         };
 
-        return &expr.base;
+        return expr.toNode();
     }
 
     pub fn parseCallArguments(self: *Parser) !?[]*Node {
@@ -401,7 +382,7 @@ pub const Parser = struct {
             }
             self.nextToken();
         }
-        return &blockPtr.base;
+        return blockPtr.toNode();
     }
 
     // Parse Statements
@@ -431,7 +412,7 @@ pub const Parser = struct {
             self.nextToken();
         }
 
-        return &letStmtPtr.base;
+        return letStmtPtr.toNode();
     }
 
     pub fn parseReturnStatement(self: *Parser) !?*Node {
@@ -447,7 +428,7 @@ pub const Parser = struct {
             self.nextToken();
         }
 
-        return &returnStmtPtr.base;
+        return returnStmtPtr.toNode();
     }
 
     pub fn parseBoolean(self: *Parser) !?*Node {
@@ -457,7 +438,7 @@ pub const Parser = struct {
 
         booleanPtr.* = Node.Boolean{ .token = self.curToken, .value = value };
 
-        return &booleanPtr.base;
+        return booleanPtr.toNode();
     }
 
     ///////////// Utilities ////////////////////////

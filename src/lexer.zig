@@ -69,7 +69,7 @@ pub const Lexer = struct {
         };
     }
 
-    pub fn readChar(self: *Lexer) void {
+    pub inline fn readChar(self: *Lexer) void {
         if (self.peekPosition >= self.input.len) {
             self.ch = 0;
         } else {
@@ -79,7 +79,7 @@ pub const Lexer = struct {
         }
     }
 
-    pub fn readNumber(self: *Lexer) []const u8 {
+    pub inline fn readNumber(self: *Lexer) []const u8 {
         const curPos = self.position;
 
         var iter = mem.tokenize(u8, self.input[curPos..], " -=+,./{[]\\();:}*|>");

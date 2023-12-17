@@ -13,7 +13,6 @@ const Environment = @import("environment.zig").Environment;
 
 pub const Object = struct {
     ty: ObjectType,
-    const Self = @This();
 
     pub const ObjectType = enum {
         Integer,
@@ -45,14 +44,17 @@ pub const Object = struct {
         }
     };
 
-    pub fn cast(base: *Object, comptime ty: ObjectType) ?*ty.Type() {
-        if (base.ty == ty) {
-            return @fieldParentPtr(ty.Type(), "base", base);
-        }
-        return null;
+    pub inline fn cast(base: *Object, comptime ty: ObjectType) *ty.Type() {
+        return @fieldParentPtr(ty.Type(), "base", base);
     }
 
-    pub fn Inspect(self: *Self, alloc: Allocator, writer: anytype) !void {
+    pub fn create(comptime T: type, alloc: Allocator, value: T) !*T {
+        const obj = try alloc.create(T);
+        obj.* = value;
+        return obj;
+    }
+
+    pub fn Inspect(self: *Object, alloc: Allocator, writer: anytype) !void {
         switch (self.ty) {
             .Integer => {
                 const int = cast(self, .Integer).?;
@@ -93,30 +95,60 @@ pub const Object = struct {
     }
 
     pub const Function = struct {
+        pub const Self = @This();
         base: Object = .{ .ty = .Function },
         parameters: []*Node.Identifier,
         body: *Node.Block,
         env: *Environment,
+
+        pub inline fn toObject(self: *Self) *Object {
+            return &self.base;
+        }
     };
 
     pub const Integer = struct {
+        pub const Self = @This();
         base: Object = .{ .ty = .Integer },
         value: i64,
+
+        pub inline fn toObject(self: *Self) *Object {
+            return &self.base;
+        }
     };
     pub const Boolean = struct {
+        pub const Self = @This();
         base: Object = .{ .ty = .Boolean },
         value: bool,
+
+        pub inline fn toObject(self: *Self) *Object {
+            return &self.base;
+        }
     };
     pub const Null = struct {
+        pub const Self = @This();
         base: Object = .{ .ty = .Null },
+
+        pub inline fn toObject(self: *Self) *Object {
+            return &self.base;
+        }
     };
     pub const ReturnValue = struct {
+        pub const Self = @This();
         base: Object = .{ .ty = .ReturnValue },
         value: *Object,
+
+        pub inline fn toObject(self: *@This()) *Object {
+            return &self.base;
+        }
     };
 
     pub const Error = struct {
+        pub const Self = @This();
         base: Object = .{ .ty = .Error },
         message: []const u8,
+
+        pub inline fn toObject(self: *Self) *Object {
+            return &self.base;
+        }
     };
 };
