@@ -3,7 +3,6 @@ const std = @import("std");
 pub fn build(b: *std.build.Builder) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
-
     const use_llvm = b.option(bool, "use-llvm", "Use llvm Backend") orelse
         !(target.getCpuArch() == .x86_64 and target.getObjectFormat() == .elf);
 
@@ -12,10 +11,10 @@ pub fn build(b: *std.build.Builder) void {
         .root_source_file = .{ .path = "src/main.zig" },
         .target = target,
         .optimize = optimize,
+        .use_llvm = use_llvm,
+        .use_lld = use_llvm,
     });
 
-    exe.use_llvm = use_llvm;
-    exe.use_lld = use_llvm;
     b.installArtifact(exe);
 
     const run_cmd = b.addRunArtifact(exe);
