@@ -2,6 +2,13 @@
 
 Development of the Monkey programming language with [zig](https://ziglang.org/) based on *Writing an Interpreter with Go by Thorsten Ball*
 
+### Notes
+
+1. Use [zigup](https://github.com/marler8997/zigup) or [zvm](https://github.com/tristanisham/zvm) to install the zig nightly compiler
+2. Install the `0.12.0-dev.1828+225fe6ddb` zig compiler
+3. Run with `zig build run`
+
+
 ### Components:
 - [x] Lexer
 - [x] Parser:
