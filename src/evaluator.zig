@@ -47,6 +47,17 @@ pub fn eval(
             );
             return obj.toObject();
         },
+        .StringLiteral => {
+            const strNode = node.cast(.StringLiteral);
+            const obj = try Object.create(
+                Object.String,
+                alloc,
+                Object.String{
+                    .value = strNode.value,
+                },
+            );
+            return obj.toObject();
+        },
         .Boolean => {
             const boolNode = node.cast(.Boolean);
             const obj = if (boolNode.value) @constCast(TRUE_VALUE) else @constCast(FALSE_VALUE);

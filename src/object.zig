@@ -21,6 +21,7 @@ pub const Object = struct {
         ReturnValue,
         Function,
         Error,
+        String,
 
         pub inline fn Type(comptime ty: ObjectType) type {
             return switch (ty) {
@@ -29,6 +30,7 @@ pub const Object = struct {
                 .Null => Null,
                 .ReturnValue => ReturnValue,
                 .Function => Function,
+                .String => String,
                 .Error => Error,
             };
         }
@@ -39,6 +41,7 @@ pub const Object = struct {
                 .Null => "Null",
                 .ReturnValue => "ReturnValue",
                 .Function => "Function",
+                .String => "String",
                 .Error => "Error",
             };
         }
@@ -71,6 +74,10 @@ pub const Object = struct {
             .Null => {
                 try writer.print("null", .{});
             },
+            .String => {
+                const str = cast(self, .String);
+                try writer.print("{s}", .{str.value});
+            },
             .Function => {
                 const func = cast(self, .Function);
 
@@ -93,6 +100,15 @@ pub const Object = struct {
             },
         }
     }
+    pub const String = struct {
+        pub const Self = @This();
+        base: Object = .{ .ty = .String },
+        value: []const u8,
+
+        pub inline fn toObject(self: *Self) *Object {
+            return &self.base;
+        }
+    };
 
     pub const Function = struct {
         pub const Self = @This();

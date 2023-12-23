@@ -29,6 +29,7 @@ pub const TokenType = enum {
     // identifiers and literals
     IDENT,
     INT,
+    STRING,
 
     //Delimiters
     COMMA,
@@ -110,3 +111,4 @@ pub const LPAREN = "(";
 pub const RPAREN = ")";
 pub const LBRACE = "{";
 pub const RBRACE = "}";
+pub const STRING = "STRING";

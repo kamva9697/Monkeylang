@@ -6,44 +6,7 @@ const ArrayList = std.ArrayList;
 const Parser = @import("parser.zig");
 const io = std.io;
 
-pub const Operator = enum {
-    plus,
-    minus,
-    multiply,
-    divide,
-    not,
-    greater_than,
-    less_than,
-    equal_to,
-    not_equal_to,
-
-    pub fn toString(op: Operator) []const u8 {
-        return switch (op) {
-            Operator.plus => "+",
-            Operator.minus => "-",
-            Operator.multiply => "*",
-            Operator.divide => "/",
-            Operator.not => "!",
-            Operator.greater_than => ">",
-            Operator.less_than => "<",
-            Operator.equal_to => "==",
-            Operator.not_equal_to => "!=",
-        };
-    }
-    pub fn fromString(literal: []const u8) ?Operator {
-        const ops = @typeInfo(Operator).Enum.fields;
-        inline for (ops) |op| {
-            const operator: Operator = @enumFromInt(op.value);
-
-            if (std.mem.eql(u8, operator.toString(), literal)) {
-                return operator;
-            }
-        }
-        return null;
-    }
-};
-
-///// Abstract Types/ Interfaces //////
+///// Base Type//////
 pub const Node = struct {
     id: Id,
 
@@ -59,6 +22,7 @@ pub const Node = struct {
         IfExpression,
         Block,
         FunctionLiteral,
+        StringLiteral,
         CallExpression,
 
         pub fn Type(comptime id: Id) type {
@@ -73,6 +37,7 @@ pub const Node = struct {
                 .Boolean => Boolean,
                 .IfExpression => IfExpression,
                 .Block => Block,
+                .StringLiteral => StringLiteral,
                 .FunctionLiteral => FunctionLiteral,
                 .CallExpression => CallExpression,
             };
@@ -98,6 +63,18 @@ pub const Node = struct {
             return &self.base;
         }
     };
+
+    pub const StringLiteral = struct {
+        pub const Self = @This();
+        base: Node = .{ .id = .StringLiteral },
+        token: Token,
+        value: []const u8,
+
+        pub inline fn toNode(self: *Self) *Node {
+            return &self.base;
+        }
+    };
+
     pub const ReturnStatement = struct {
         pub const Self = @This();
         base: Node = .{ .id = .ReturnStatement },
@@ -345,6 +322,10 @@ pub const Node = struct {
 
                 try (&functionLiteralNode.body.base).toString(writer);
             },
+            .StringLiteral => {
+                const stringNode = node.cast(.StringLiteral);
+                try writer.writeAll(stringNode.value);
+            },
             .CallExpression => {
                 var callExpressionNode = node.cast(.CallExpression);
 
@@ -419,3 +400,40 @@ test "Tree Test" {
 
     try testing.expectEqualStrings("let myVar = anotherVar;", buf.items);
 }
+
+pub const Operator = enum {
+    plus,
+    minus,
+    multiply,
+    divide,
+    not,
+    greater_than,
+    less_than,
+    equal_to,
+    not_equal_to,
+
+    pub fn toString(op: Operator) []const u8 {
+        return switch (op) {
+            Operator.plus => "+",
+            Operator.minus => "-",
+            Operator.multiply => "*",
+            Operator.divide => "/",
+            Operator.not => "!",
+            Operator.greater_than => ">",
+            Operator.less_than => "<",
+            Operator.equal_to => "==",
+            Operator.not_equal_to => "!=",
+        };
+    }
+    pub fn fromString(literal: []const u8) ?Operator {
+        const ops = @typeInfo(Operator).Enum.fields;
+        inline for (ops) |op| {
+            const operator: Operator = @enumFromInt(op.value);
+
+            if (std.mem.eql(u8, operator.toString(), literal)) {
+                return operator;
+            }
+        }
+        return null;
+    }
+};

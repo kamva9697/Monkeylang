@@ -28,6 +28,7 @@ pub const Parser = struct {
         NoPrefixParseFn,
         UnexpectedToken,
         ParameterListTooLong,
+        InvalidCharacter,
         TypeMismatch,
         UnknownOperator,
     };
@@ -74,6 +75,7 @@ pub const Parser = struct {
             .errors = .{},
         };
 
+        p.registerPrefix(TokenType.STRING, &parseStringLiteral);
         p.registerInfix(TokenType.LPAREN, &parseCallExpression);
         p.registerPrefix(TokenType.FUNCTION, &parseFunctionLiteral);
         p.registerPrefix(TokenType.IF, &parseIfExpression);
@@ -211,7 +213,13 @@ pub const Parser = struct {
         return exprPtr;
     }
 
-    // Parse Literals
+    pub fn parseStringLiteral(self: *Parser) !?*Node {
+        const lit = try self.arena.allocator().create(Node.StringLiteral);
+        lit.* = Node.StringLiteral{ .token = self.curToken, .value = self.curToken.Literal };
+        return lit.toNode();
+    }
+
+    // Parse Function Literals
     pub fn parseFunctionLiteral(self: *Parser) !?*Node {
         var lit = try self.arena.allocator().create(Node.FunctionLiteral);
 
@@ -285,6 +293,10 @@ pub const Parser = struct {
         var litPtr = try self.arena.allocator().create(Node.IntegerLiteral);
 
         litPtr.* = Node.IntegerLiteral{ .token = self.curToken, .value = undefined };
+
+        if (!(try self.isDigit(litPtr.token.Literal))) {
+            return litPtr.toNode();
+        }
 
         litPtr.value = try std.fmt.parseInt(u32, litPtr.token.Literal, 10);
 
@@ -442,6 +454,24 @@ pub const Parser = struct {
     }
 
     ///////////// Utilities ////////////////////////
+    pub inline fn isDigit(self: *Parser, num: []const u8) !bool {
+        for (num) |c| {
+            if (!std.ascii.isDigit(c)) {
+                const ctx: ParserErrorContext = .{
+                    .err = ParserError.InvalidCharacter,
+                    .msg = try std.fmt.ParseIntError.allocPrint(
+                        self.arena.allocator(),
+                        "Invalid Integer Character: {c} in {s}",
+                        .{ c, num },
+                    ),
+                };
+
+                try self.errors.append(self.arena.allocator(), ctx);
+                return false;
+            }
+        }
+        return true;
+    }
     pub inline fn peekPrecedence(self: *Parser) Precedence {
         return Precedence.fromTokenType(self.peekToken.Type);
     }

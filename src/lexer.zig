@@ -42,6 +42,10 @@ pub const Lexer = struct {
             '|' => .{ .Type = .OR, .Literal = token.OR },
             '&' => .{ .Type = .AND, .Literal = token.AND },
             '^' => .{ .Type = .XOR, .Literal = token.XOR },
+            '\"' => blk: {
+                const literal = self.readString();
+                break :blk .{ .Type = .STRING, .Literal = literal };
+            },
             '=' => blk: {
                 if (self.input[self.peekPosition] == '=') {
                     self.readChar();
@@ -67,6 +71,18 @@ pub const Lexer = struct {
             },
             else => .{ .Type = .ILLEGAL, .Literal = token.ILLEGAL },
         };
+    }
+
+    // TODO: Test case
+    pub inline fn readString(self: *Lexer) []const u8 {
+        const position = self.position + 1;
+
+        self.readChar(); // consume opening '"'
+        while (self.ch != '\"' or self.ch == 0) {
+            self.readChar();
+        }
+
+        return self.input[position..self.position];
     }
 
     pub inline fn readChar(self: *Lexer) void {
