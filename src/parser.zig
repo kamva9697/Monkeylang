@@ -459,7 +459,7 @@ pub const Parser = struct {
             if (!std.ascii.isDigit(c)) {
                 const ctx: ParserErrorContext = .{
                     .err = ParserError.InvalidCharacter,
-                    .msg = try std.fmt.ParseIntError.allocPrint(
+                    .msg = try std.fmt.allocPrint(
                         self.arena.allocator(),
                         "Invalid Integer Character: {c} in {s}",
                         .{ c, num },
