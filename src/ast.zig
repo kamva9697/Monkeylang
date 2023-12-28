@@ -244,7 +244,7 @@ pub const Node = struct {
 
                 try writer.writeAll(letStmtNode.token.Literal);
                 try writer.writeAll(" ");
-                var identNode = &letStmtNode.name.base;
+                var identNode = letStmtNode.name.toNode();
                 try identNode.toString(writer);
                 try writer.writeAll(" = ");
                 try letStmtNode.value.?.toString(writer);
@@ -296,11 +296,11 @@ pub const Node = struct {
                 try writer.writeAll("if");
                 try ifExprPtr.condition.toString(writer);
                 try writer.writeAll(" ");
-                try (&ifExprPtr.consequence.base).toString(writer);
+                try (ifExprPtr.consequence.toNode()).toString(writer);
 
                 if (ifExprPtr.alternative) |altNode| {
                     try writer.writeAll("else ");
-                    try (&altNode.base).toString(writer);
+                    try (altNode.toNode()).toString(writer);
                 }
             },
             .Block => {
@@ -320,7 +320,7 @@ pub const Node = struct {
                 }
                 try writer.writeAll(") ");
 
-                try (&functionLiteralNode.body.base).toString(writer);
+                try (functionLiteralNode.body.toNode()).toString(writer);
             },
             .StringLiteral => {
                 const stringNode = node.cast(.StringLiteral);
@@ -364,7 +364,7 @@ test "toString" {
             .token = Token{ .Type = .IDENT, .Literal = "myVar" },
             .value = "myVar",
         },
-        .value = &identPtr.base,
+        .value = identPtr.toNode(),
     };
 
     const node = statement.toNode();
@@ -393,10 +393,10 @@ test "Tree Test" {
             .token = Token{ .Type = .IDENT, .Literal = "myVar" },
             .value = "myVar",
         },
-        .value = &identPtr.base,
+        .value = identPtr.toNode(),
     };
 
-    try (&letStmtPtr.base).toString(buf.writer());
+    try (letStmtPtr.toNode()).toString(buf.writer());
 
     try testing.expectEqualStrings("let myVar = anotherVar;", buf.items);
 }

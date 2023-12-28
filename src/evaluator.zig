@@ -14,7 +14,6 @@ pub const TRUE_VALUE = &Object.Boolean{ .value = true };
 pub const FALSE_VALUE = &Object.Boolean{ .value = false };
 pub const NULL_VALUE = &Object.Null{};
 
-// Todo: Block, FunctionLiteral,
 pub fn eval(
     alloc: Allocator,
     node: *Ast.Node,
@@ -133,10 +132,7 @@ pub fn eval(
 }
 
 pub fn applyFunction(alloc: Allocator, fnObj: *Object, args: []*Object) !*Object {
-    const function = fnObj.cast(.Function); //orelse {
-    //     return newError(alloc, "Not a function: {any}", .{fnObj.ty});
-    // };
-
+    const function = fnObj.cast(.Function);
     const extendedEnv = try extendedEnvFunction(alloc, fnObj, args);
     const evaluated = (try eval(alloc, function.body.toNode(), extendedEnv)).?;
     return unwrapReturnValue(evaluated);

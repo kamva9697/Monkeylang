@@ -294,7 +294,7 @@ pub fn FunctionParameterTest(
     try testing.expectEqual(expected.len, functionParams.parameters.len);
 
     for (expected, 0..) |tc, i| {
-        try testIdentifierLiteral(&functionParams.parameters[i].base, tc);
+        try testIdentifierLiteral(functionParams.parameters[i].toNode(), tc);
     }
 }
 
@@ -317,8 +317,8 @@ pub fn FunctionLiteralTest(comptime input: [:0]const u8) !void {
     try testing.expectEqual(@as(usize, 2), funcLitNode.parameters.len);
 
     if (funcLitNode.parameters.len != 0) {
-        try testLiteralExpressions([]const u8, &funcLitNode.parameters[0].base, "x");
-        try testLiteralExpressions([]const u8, &funcLitNode.parameters[1].base, "y");
+        try testLiteralExpressions([]const u8, funcLitNode.parameters[0].toNode(), "x");
+        try testLiteralExpressions([]const u8, funcLitNode.parameters[1].toNode(), "y");
     }
 
     try testing.expectEqual(@as(usize, 1), funcLitNode.body.statements.items.len);

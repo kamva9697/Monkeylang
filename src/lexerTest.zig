@@ -89,6 +89,13 @@ pub const arithmeticOperators = [_]Test{
 
 /////Tests//////////////////
 
+test "Strings" {
+    const input = "\"foobar\"";
+    var lex = Lexer.init(input);
+    const tok = lex.nextToken();
+    try testing.expectEqualStrings("foobar", tok.Literal);
+}
+
 test "LexerEOF" {
     const input = "";
     var lex = Lexer.init(input);

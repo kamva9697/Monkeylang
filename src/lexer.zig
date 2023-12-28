@@ -73,7 +73,6 @@ pub const Lexer = struct {
         };
     }
 
-    // TODO: Test case
     pub inline fn readString(self: *Lexer) []const u8 {
         const position = self.position + 1;
 
