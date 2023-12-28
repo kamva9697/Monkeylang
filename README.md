@@ -30,6 +30,8 @@ Development of the Monkey programming language with [zig](https://ziglang.org/) 
     - [x] Integers
     - [x] Booleans
     - [x] Null
+    - [x] Strings:
+        - [x] Concatenation
     - [x] Expressions
         - [x] Integer Literals
         - [x] Boolean Literals
