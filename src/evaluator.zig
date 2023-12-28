@@ -263,6 +263,14 @@ pub fn evalInfixExpression(
             .{ left.ty.toString(), op.toString(), right.ty.toString() },
         );
     }
+    if (right.ty == .String and left.ty == .String) {
+        return try evalStringInfixExpressions(
+            alloc,
+            op,
+            right,
+            left,
+        );
+    }
     if (right.ty == .Integer and left.ty == .Integer) {
         return try evalIntegerInfixExpressions(
             alloc,
@@ -303,6 +311,41 @@ pub fn evalInfixExpression(
             right.ty.toString(),
         },
     );
+}
+
+pub fn evalStringInfixExpressions(
+    alloc: Allocator,
+    op: Ast.Operator,
+    right: *Object,
+    left: *Object,
+) !*Object {
+    const leftIntegerObj = left.cast(.String);
+    const leftVal = leftIntegerObj.value;
+    const rightIntegerObj = right.cast(.String);
+    const rightVal = rightIntegerObj.value;
+
+    return switch (op) {
+        .plus => {
+            const result_string = try std.mem.concat(
+                alloc,
+                u8,
+                &[_][]const u8{ leftVal, rightVal },
+            );
+            var obj = try Object.create(
+                Object.String,
+                alloc,
+                Object.String{
+                    .value = result_string,
+                },
+            );
+            return obj.toObject();
+        },
+        else => newError(
+            alloc,
+            "Unknown Operator: {s} {s} {s}",
+            .{ left.ty.toString(), op.toString(), right.ty.toString() },
+        ),
+    };
 }
 
 pub fn evalIntegerInfixExpressions(

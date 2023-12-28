@@ -84,14 +84,14 @@ pub const Object = struct {
                 var params = std.ArrayList(u8).init(alloc);
                 const paramsWriter = params.writer();
                 for (func.parameters) |param| {
-                    try (param.toObject()).toString(paramsWriter);
+                    try (param.toNode()).toString(paramsWriter);
                 }
                 try writer.writeAll("fn");
                 try writer.writeAll("(");
                 // const joinedParms = try std.mem.join(alloc, ", ", params.items);
                 try writer.print("{any}", .{params.items});
                 try writer.writeAll(") {\n");
-                try (func.body.toObject()).toString(writer);
+                try (func.body.toNode()).toString(writer);
                 try writer.writeAll("\n");
             },
             .Error => {

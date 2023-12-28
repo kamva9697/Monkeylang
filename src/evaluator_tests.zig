@@ -15,7 +15,7 @@ var gpa = std.heap.GeneralPurposeAllocator(.{}){};
 
 test "testEvalIntegerExpressions" {
     var arena = std.heap.ArenaAllocator.init(gpa.allocator());
-    const allocator = arena.allocator(); // the ast Test Deallocates
+    const allocator = arena.allocator();
     defer arena.deinit();
     try testIntegerExpressions(allocator, "5", 5);
     try testIntegerExpressions(allocator, "10", 10);
@@ -38,7 +38,7 @@ test "testEvalIntegerExpressions" {
 
 test "testEvalBooleanExpressions" {
     var arena = std.heap.ArenaAllocator.init(gpa.allocator());
-    const allocator = arena.allocator(); // the ast Test Deallocates
+    const allocator = arena.allocator();
     defer arena.deinit();
     try testBooleanExpressions(allocator, "true", true);
     try testBooleanExpressions(allocator, "false", false);
@@ -69,7 +69,7 @@ test "testEvalBooleanExpressions" {
 
 test "TestEvalIfExpressions" {
     var arena = std.heap.ArenaAllocator.init(gpa.allocator());
-    const allocator = arena.allocator(); // the ast Test Deallocates
+    const allocator = arena.allocator();
     defer arena.deinit();
     try testIfExpressions(allocator, "if (true) { 10 }", 10);
     try testIfExpressions(allocator, "if (false) { 10 }", null);
@@ -82,7 +82,7 @@ test "TestEvalIfExpressions" {
 
 test "TestReturnStatements" {
     var arena = std.heap.ArenaAllocator.init(gpa.allocator());
-    const allocator = arena.allocator(); // the ast Test Deallocates
+    const allocator = arena.allocator();
     defer arena.deinit();
     try testReturnStatements(allocator, "return 10;", 10);
     try testReturnStatements(allocator, "return 10; 9;", 10);
@@ -90,14 +90,20 @@ test "TestReturnStatements" {
     try testReturnStatements(allocator, "7; return 2 * 5; 9;", 10);
 }
 
-test "TestErrorHanlding" {
+test "TestErrorHandling" {
     var arena = std.heap.ArenaAllocator.init(gpa.allocator());
-    const allocator = arena.allocator(); // the ast Test Deallocates
+    const allocator = arena.allocator();
     defer arena.deinit();
     try testErrorHandling(
         allocator,
         "5 + true;",
         "Type Mismatch: Integer + Boolean",
+    );
+    try testErrorHandling(
+        allocator,
+        \\"Hello" - "World"
+    ,
+        "Unknown Operator: String - String",
     );
     try testErrorHandling(
         allocator,
@@ -144,7 +150,7 @@ test "TestErrorHanlding" {
 
 test "TestLetStatement" {
     var arena = std.heap.ArenaAllocator.init(gpa.allocator());
-    const allocator = arena.allocator(); // the ast Test Deallocates
+    const allocator = arena.allocator();
     defer arena.deinit();
     try testLetStatement(allocator, "let a = 5; a;", 5);
     try testLetStatement(allocator, "let a = 5 * 5; a;", 25);
@@ -154,9 +160,30 @@ test "TestLetStatement" {
 
 test "TestFunction" {
     var arena = std.heap.ArenaAllocator.init(gpa.allocator());
-    const allocator = arena.allocator(); // the ast Test Deallocates
+    const allocator = arena.allocator();
     defer arena.deinit();
     try testFunction(allocator, "fn(x) { x + 2; };");
+}
+
+test "TestStringConcat" {
+    var arena = std.heap.ArenaAllocator.init(gpa.allocator());
+    const allocator = arena.allocator();
+    defer arena.deinit();
+
+    try testStringConcatenation(
+        allocator,
+        \\"Hello" + " " + "World"
+    ,
+        "Hello World",
+    );
+}
+
+fn testStringConcatenation(alloc: std.mem.Allocator, input: [:0]const u8, expected: []const u8) !void {
+    const evaluated = (try testEval(alloc, input)).?;
+
+    try testing.expectEqual(ObjectType.String, evaluated.ty);
+    const string = evaluated.cast(.String);
+    try testing.expectEqualStrings(expected, string.value);
 }
 
 fn testFunction(alloc: std.mem.Allocator, input: [:0]const u8) !void {
