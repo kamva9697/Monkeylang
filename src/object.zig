@@ -1,19 +1,14 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 const ast = @import("ast.zig");
-const Lexer = @import("lexer.zig").Lexer;
-const token = @import("token.zig");
-const TokenType = token.TokenType;
-const Token = token.Token;
 const Node = ast.Node;
 const Operator = ast.Operator;
-const mem = std.mem;
-const testing = std.testing;
 const Environment = @import("environment.zig").Environment;
 
 pub const Object = struct {
     ty: ObjectType,
 
+    pub const BuiltinFunction = *const fn (Allocator, args: []*Object) anyerror!*Object;
     pub const ObjectType = enum {
         Integer,
         Boolean,
@@ -22,6 +17,7 @@ pub const Object = struct {
         Function,
         Error,
         String,
+        Builtin,
 
         pub inline fn Type(comptime ty: ObjectType) type {
             return switch (ty) {
@@ -32,6 +28,7 @@ pub const Object = struct {
                 .Function => Function,
                 .String => String,
                 .Error => Error,
+                .Builtin => Builtin,
             };
         }
         pub inline fn toString(ty: ObjectType) []const u8 {
@@ -43,6 +40,7 @@ pub const Object = struct {
                 .Function => "Function",
                 .String => "String",
                 .Error => "Error",
+                .Builtin => "Builtin",
             };
         }
     };
@@ -78,6 +76,9 @@ pub const Object = struct {
                 const str = cast(self, .String);
                 try writer.print("{s}", .{str.value});
             },
+            .Builtin => {
+                try writer.print("Builtin Fn", .{});
+            },
             .Function => {
                 const func = cast(self, .Function);
 
@@ -88,7 +89,6 @@ pub const Object = struct {
                 }
                 try writer.writeAll("fn");
                 try writer.writeAll("(");
-                // const joinedParms = try std.mem.join(alloc, ", ", params.items);
                 try writer.print("{any}", .{params.items});
                 try writer.writeAll(") {\n");
                 try (func.body.toNode()).toString(writer);
@@ -100,6 +100,17 @@ pub const Object = struct {
             },
         }
     }
+
+    pub const Builtin = struct {
+        pub const Self = @This();
+        base: Object = .{ .ty = .Builtin },
+        _fn: BuiltinFunction,
+
+        pub inline fn toObject(self: *Self) *Object {
+            return &self.base;
+        }
+    };
+
     pub const String = struct {
         pub const Self = @This();
         base: Object = .{ .ty = .String },
@@ -140,6 +151,7 @@ pub const Object = struct {
             return &self.base;
         }
     };
+
     pub const Null = struct {
         pub const Self = @This();
         base: Object = .{ .ty = .Null },

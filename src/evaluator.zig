@@ -9,6 +9,7 @@ const ObjectType = Object.ObjectType;
 const Allocator = std.mem.Allocator;
 const Math = std.math;
 const Environment = @import("environment.zig").Environment;
+const Builtins = @import("builtins.zig");
 
 pub const TRUE_VALUE = &Object.Boolean{ .value = true };
 pub const FALSE_VALUE = &Object.Boolean{ .value = false };
@@ -132,10 +133,22 @@ pub fn eval(
 }
 
 pub fn applyFunction(alloc: Allocator, fnObj: *Object, args: []*Object) !*Object {
-    const function = fnObj.cast(.Function);
-    const extendedEnv = try extendedEnvFunction(alloc, fnObj, args);
-    const evaluated = (try eval(alloc, function.body.toNode(), extendedEnv)).?;
-    return unwrapReturnValue(evaluated);
+    return switch (fnObj.ty) {
+        .Function => {
+            const function = fnObj.cast(.Function);
+            const extendedEnv = try extendedEnvFunction(alloc, fnObj, args);
+            const evaluated = (try eval(alloc, function.body.toNode(), extendedEnv)).?;
+            return unwrapReturnValue(evaluated);
+        },
+        .Builtin => {
+            const function = fnObj.cast(.Builtin);
+            const resObj = function._fn(alloc, args);
+            return resObj;
+        },
+        else => {
+            return newError(alloc, "not a function: {any}", .{fnObj.ty});
+        },
+    };
 }
 
 pub fn extendedEnvFunction(alloc: Allocator, func: *Object, args: []*Object) !*Environment {
@@ -174,8 +187,16 @@ pub fn evalExpressions(
 
 pub fn evalIdentifier(alloc: Allocator, node: *Ast.Node, env: *Environment) !*Object {
     const identNode = node.cast(.Identifier);
-    const val = env.get(identNode.value) orelse
-        newError(alloc, "Identifier not found: {s}", .{identNode.value});
+    // const val = env.get(identNode.value) orelse {
+    //     return Builtins.builtins.get(identNode.value) orelse
+    //         newError(alloc, "Identifier not found: {s}", .{identNode.value});
+    // };
+
+    const val = env.get(identNode.value) orelse {
+        const builtPtr = Builtins.builtins(identNode.value) orelse
+            try newError(alloc, "Identifier not found: {s}", .{identNode.value});
+        return @constCast(builtPtr);
+    };
 
     return val;
 }
