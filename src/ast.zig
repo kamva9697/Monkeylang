@@ -2,9 +2,6 @@ const std = @import("std");
 const token = @import("token.zig");
 const TokenType = @import("token.zig").TokenType;
 const Token = @import("token.zig").Token;
-const ArrayList = std.ArrayList;
-const Parser = @import("parser.zig");
-const io = std.io;
 
 ///// Base Type//////
 pub const Node = struct {
@@ -54,9 +51,13 @@ pub const Node = struct {
         pub fn init(alloc: std.mem.Allocator) !*Self {
             const tree = try alloc.create(Self);
             tree.* = Tree{
-                .statements = std.ArrayList(*Node).init(alloc),
+                .statements = .empty,
             };
             return tree;
+        }
+
+        pub fn deinit(self: *Self, alloc: std.mem.Allocator) void {
+            self.statements.deinit(alloc);
         }
 
         pub inline fn toNode(self: *Self) *Node {
@@ -205,13 +206,18 @@ pub const Node = struct {
     };
 
     pub inline fn cast(base: *Node, comptime id: Id) *id.Type() {
-        return @fieldParentPtr(id.Type(), "base", base);
+        // `base` is not necessarily at offset 0 within the parent node type —
+        // Zig may reorder struct fields for alignment — so recover the parent
+        // pointer via @fieldParentPtr rather than a raw @ptrCast. The @alignCast
+        // asserts the parent's higher alignment (Node itself is only 1-aligned).
+        return @alignCast(@fieldParentPtr("base", base));
     }
 
     pub fn tokenType(base: *Node) TokenType {
         return switch (base.id) {
             inline else => |case| {
-                const node = @fieldParentPtr(Id.Type(case), "base", base);
+                const T = Id.Type(case);
+                const node: *T = @alignCast(@fieldParentPtr("base", base));
                 return node.token.Type;
             },
         };
@@ -221,9 +227,10 @@ pub const Node = struct {
         return switch (node.id) {
             .Tree => {
                 const treeNode = node.cast(.Tree);
-
-                for (treeNode.statements.items) |st| {
-                    try st.toString(writer);
+                if (treeNode.statements.items.len > 0) {
+                    for (treeNode.statements.items) |st| {
+                        try st.toString(writer);
+                    }
                 }
             },
             .ReturnStatement => {
@@ -312,7 +319,12 @@ pub const Node = struct {
             .FunctionLiteral => {
                 var functionLiteralNode = node.cast(.FunctionLiteral);
 
-                try writer.writeAll(functionLiteralNode.token.Literal);
+                // Defensive check for token validity
+                if (functionLiteralNode.token.Literal.len == 0) {
+                    try writer.writeAll("fn");
+                } else {
+                    try writer.writeAll(functionLiteralNode.token.Literal);
+                }
                 try writer.writeAll("(");
 
                 for (functionLiteralNode.parameters) |params| {
@@ -347,58 +359,75 @@ test "toString" {
     const testing = std.testing;
 
     var alloc = testing.allocator;
-    var buf = std.ArrayList(u8).init(alloc);
+    var buf: std.Io.Writer.Allocating = .init(alloc);
     defer buf.deinit();
 
+    // Create the identifier with proper allocation
     var identPtr = try alloc.create(Node.Identifier);
     defer alloc.destroy(identPtr);
 
-    identPtr.* = Node.Identifier{
-        .token = Token{ .Type = .IDENT, .Literal = "anotherVar" },
+    identPtr.* = .{
+        .base = .{ .id = .Identifier },
+        .token = .{ .Type = .IDENT, .Literal = "anotherVar" },
         .value = "anotherVar",
     };
 
-    var statement = Node.LetStatement{
-        .token = Token{ .Type = .LET, .Literal = "let" },
-        .name = Node.Identifier{
-            .token = Token{ .Type = .IDENT, .Literal = "myVar" },
+    // Create the let statement with proper allocation
+    var stmtPtr = try alloc.create(Node.LetStatement);
+    defer alloc.destroy(stmtPtr);
+
+    stmtPtr.* = .{
+        .base = .{ .id = .LetStatement },
+        .token = .{ .Type = .LET, .Literal = "let" },
+        .name = .{
+            .base = .{ .id = .Identifier },
+            .token = .{ .Type = .IDENT, .Literal = "myVar" },
             .value = "myVar",
         },
         .value = identPtr.toNode(),
     };
 
-    const node = statement.toNode();
-    try node.toString(buf.writer());
+    const node = stmtPtr.toNode();
+    try node.toString(&buf.writer);
 
-    try testing.expect(buf.items.len > 0);
+    try testing.expect(buf.written().len > 0);
 
-    try testing.expectEqualStrings("let myVar = anotherVar;", buf.items);
+    try testing.expectEqualStrings("let myVar = anotherVar;", buf.written());
 }
 
 test "Tree Test" {
     const testing = std.testing;
 
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    var allocator = gpa.allocator();
-    var buf = std.ArrayList(u8).init(allocator);
+    var alloc = testing.allocator;
+    var buf: std.Io.Writer.Allocating = .init(alloc);
+    defer buf.deinit();
 
-    var identPtr = try allocator.create(Node.Identifier);
-    identPtr.* = Node.Identifier{ .token = Token{ .Type = .IDENT, .Literal = "anotherVar" }, .value = "anotherVar" };
+    // Create the identifier with proper allocation and initialization
+    var identPtr = try alloc.create(Node.Identifier);
+    defer alloc.destroy(identPtr);
+    identPtr.* = .{
+        .base = .{ .id = .Identifier },
+        .token = .{ .Type = .IDENT, .Literal = "anotherVar" },
+        .value = "anotherVar",
+    };
 
-    var letStmtPtr = try allocator.create(Node.LetStatement);
-
-    letStmtPtr.* = Node.LetStatement{
-        .token = Token{ .Type = .LET, .Literal = "let" },
-        .name = Node.Identifier{
-            .token = Token{ .Type = .IDENT, .Literal = "myVar" },
+    // Create the let statement with proper allocation and initialization
+    var letStmtPtr = try alloc.create(Node.LetStatement);
+    defer alloc.destroy(letStmtPtr);
+    letStmtPtr.* = .{
+        .base = .{ .id = .LetStatement },
+        .token = .{ .Type = .LET, .Literal = "let" },
+        .name = .{
+            .base = .{ .id = .Identifier },
+            .token = .{ .Type = .IDENT, .Literal = "myVar" },
             .value = "myVar",
         },
         .value = identPtr.toNode(),
     };
 
-    try (letStmtPtr.toNode()).toString(buf.writer());
+    try (letStmtPtr.toNode()).toString(&buf.writer);
 
-    try testing.expectEqualStrings("let myVar = anotherVar;", buf.items);
+    try testing.expectEqualStrings("let myVar = anotherVar;", buf.written());
 }
 
 pub const Operator = enum {
@@ -426,7 +455,7 @@ pub const Operator = enum {
         };
     }
     pub fn fromString(literal: []const u8) ?Operator {
-        const ops = @typeInfo(Operator).Enum.fields;
+        const ops = @typeInfo(Operator).@"enum".fields;
         inline for (ops) |op| {
             const operator: Operator = @enumFromInt(op.value);
 

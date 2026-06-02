@@ -1,18 +1,24 @@
 const std = @import("std");
 
-pub fn build(b: *std.build.Builder) void {
+pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
-    const use_llvm = b.option(bool, "use-llvm", "Use llvm Backend") orelse
-        !(target.getCpuArch() == .x86_64 and target.getObjectFormat() == .elf);
+
+    _ = b.addModule("parser", .{ .root_source_file = b.path("src/parser.zig") });
+
+    _ = b.addModule("lexer", .{ .root_source_file = b.path("src/lexer.zig") });
+
+    _ = b.addModule("ast", .{ .root_source_file = b.path("src/ast.zig") });
+
+    _ = b.addModule("object", .{ .root_source_file = b.path("src/object.zig") });
 
     const exe = b.addExecutable(.{
         .name = "monkey",
-        .root_source_file = .{ .path = "src/main.zig" },
-        .target = target,
-        .optimize = optimize,
-        .use_llvm = use_llvm,
-        .use_lld = use_llvm,
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/main.zig"),
+            .target = target,
+            .optimize = optimize,
+        }),
     });
 
     b.installArtifact(exe);
@@ -28,9 +34,11 @@ pub fn build(b: *std.build.Builder) void {
     run_step.dependOn(&run_cmd.step);
 
     const unit_tests = b.addTest(.{
-        .root_source_file = .{ .path = "src/tests.zig" },
-        .target = target,
-        .optimize = optimize,
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/tests.zig"),
+            .target = target,
+            .optimize = optimize,
+        }),
     });
 
     const run_unit_tests = b.addRunArtifact(unit_tests);

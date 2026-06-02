@@ -59,7 +59,7 @@ pub const Token = struct {
     }
 };
 
-pub const keywords = std.ComptimeStringMap(TokenType, .{
+const keywords_map = std.StaticStringMap(TokenType).initComptime(.{
     .{ "fn", .FUNCTION },
     .{ "let", .LET },
     .{ "if", .IF },
@@ -68,6 +68,8 @@ pub const keywords = std.ComptimeStringMap(TokenType, .{
     .{ "true", .TRUE },
     .{ "false", .FALSE },
 });
+
+pub const keywords = keywords_map;
 
 pub fn getKeyword(string: []const u8) TokenType {
     return keywords.get(string) orelse .IDENT;

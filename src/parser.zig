@@ -15,10 +15,15 @@ pub const Parser = struct {
     lex: Lexer,
     curToken: Token,
     peekToken: Token,
-    prefixParseFns: std.AutoHashMapUnmanaged(TokenType, prefixParseFn),
-    infixParseFns: std.AutoHashMapUnmanaged(TokenType, infixParseFn),
-    errors: std.ArrayListUnmanaged(ParserErrorContext),
+    prefixParseFns: PrefixParseFns,
+    infixParseFns: InfixParseFns,
+    errors: ErrorList,
     arena: std.heap.ArenaAllocator,
+
+    // Type aliases
+    const PrefixParseFns = std.AutoHashMapUnmanaged(TokenType, prefixParseFn);
+    const InfixParseFns = std.AutoHashMapUnmanaged(TokenType, infixParseFn);
+    const ErrorList = std.ArrayList(ParserErrorContext);
 
     // Class type Declarations
     pub const prefixParseFn = *const fn (*Parser) anyerror!?*Node;
@@ -65,14 +70,19 @@ pub const Parser = struct {
 
     //struct methods(Class methods not instance methods)
     pub fn init(input: [:0]const u8, allocator: std.mem.Allocator) Parser {
+        // NOTE: `arena` is constructed directly in the struct literal so the
+        // ArenaAllocator is only ever addressed through `self.arena` after the
+        // Parser value is moved out of `init`. Capturing `arena.allocator()`
+        // into a local (or a managed map) before the move would store a pointer
+        // to this stack frame's arena and dangle once `p` is returned by value.
         var p = Parser{
             .lex = Lexer.init(input),
-            .prefixParseFns = .{},
-            .infixParseFns = .{},
-            .curToken = .{ .Type = undefined, .Literal = undefined },
-            .peekToken = .{ .Type = undefined, .Literal = undefined },
+            .prefixParseFns = .empty,
+            .infixParseFns = .empty,
+            .curToken = undefined,
+            .peekToken = undefined,
             .arena = std.heap.ArenaAllocator.init(allocator),
-            .errors = .{},
+            .errors = .empty,
         };
 
         p.registerPrefix(TokenType.STRING, &parseStringLiteral);
@@ -112,7 +122,7 @@ pub const Parser = struct {
 
         while (!self.curTokenIs(.EOF)) {
             if (try self.parseStatement()) |statement| {
-                try treePtr.statements.append(statement);
+                try treePtr.statements.append(self.arena.allocator(), statement);
                 self.nextToken();
             } else {
                 break;
@@ -251,7 +261,7 @@ pub const Parser = struct {
 
         if (self.peekTokenIs(.RPAREN)) {
             self.nextToken();
-            return try identifiers.toOwnedSlice();
+            return try identifiers.toOwnedSlice(self.arena.allocator());
         }
         self.nextToken();
 
@@ -261,7 +271,7 @@ pub const Parser = struct {
             .value = self.curToken.Literal,
         };
 
-        try identifiers.append(ident);
+        try identifiers.append(self.arena.allocator(), ident);
 
         while (self.peekTokenIs(.COMMA)) {
             self.nextToken();
@@ -271,7 +281,7 @@ pub const Parser = struct {
                 .token = self.curToken,
                 .value = self.curToken.Literal,
             };
-            try identifiers.append(ident);
+            try identifiers.append(self.arena.allocator(), ident);
         }
 
         if (!(try self.expectPeek(.RPAREN))) {
@@ -286,7 +296,7 @@ pub const Parser = struct {
             try self.errors.append(self.arena.allocator(), ctx);
         }
 
-        return try identifiers.toOwnedSlice();
+        return try identifiers.toOwnedSlice(self.arena.allocator());
     }
 
     pub fn parseIntegerLiteral(self: *Parser) !?*Node {
@@ -353,28 +363,28 @@ pub const Parser = struct {
     }
 
     pub fn parseCallArguments(self: *Parser) !?[]*Node {
-        var args = std.ArrayList(*Node).init(self.arena.allocator());
+        var args: std.ArrayList(*Node) = .empty;
 
         if (self.peekTokenIs(.RPAREN)) {
             self.nextToken();
-            return try args.toOwnedSlice();
+            return try args.toOwnedSlice(self.arena.allocator());
         }
 
         self.nextToken();
 
-        try args.append((try self.parseExpression(.LOWEST)).?);
+        try args.append(self.arena.allocator(), (try self.parseExpression(.LOWEST)).?);
 
         while (self.peekTokenIs(.COMMA)) {
             self.nextToken();
             self.nextToken();
-            try args.append((try self.parseExpression(.LOWEST)).?);
+            try args.append(self.arena.allocator(), (try self.parseExpression(.LOWEST)).?);
         }
 
         if (!(try self.expectPeek(.RPAREN))) {
             return null;
         }
 
-        return try args.toOwnedSlice();
+        return try args.toOwnedSlice(self.arena.allocator());
     }
 
     pub fn parseBlockStatement(self: *Parser) !?*Node {
@@ -382,7 +392,7 @@ pub const Parser = struct {
 
         blockPtr.* = Node.Block{
             .token = self.curToken,
-            .statements = .{},
+            .statements = .empty,
         };
 
         self.nextToken();
@@ -529,19 +539,18 @@ pub const Parser = struct {
     }
 
     // Destructor
-    pub fn deinit(self: *const Parser) void {
+    pub fn deinit(self: *Parser) void {
+        self.prefixParseFns.deinit(self.arena.allocator());
+        self.infixParseFns.deinit(self.arena.allocator());
+        self.errors.deinit(self.arena.allocator());
         self.arena.deinit();
-        // self.errors.deinit(self.arena.allocator(),);
-        // self.prefixParseFns.deinit(self.arena.allocator());
-        // self.infixParseFns.deinit(self.arena.allocator());
-        // self.parseProgram().deinit();
     }
 };
 
 test "initParser" {
     const input = "let five = 5;";
 
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    const parser = Parser.init(input, gpa.allocator());
+    var gpa = std.heap.DebugAllocator(.{}){};
+    var parser = Parser.init(input, gpa.allocator());
     defer parser.deinit();
 }

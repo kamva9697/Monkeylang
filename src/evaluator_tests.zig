@@ -11,7 +11,7 @@ const testing = std.testing;
 const Environment = @import("environment.zig").Environment;
 
 /// Global Allocator
-var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+var gpa = std.heap.DebugAllocator(.{}){};
 
 test "testEvalIntegerExpressions" {
     var arena = std.heap.ArenaAllocator.init(gpa.allocator());
@@ -187,21 +187,22 @@ fn testStringConcatenation(alloc: std.mem.Allocator, input: [:0]const u8, expect
 }
 
 fn testFunction(alloc: std.mem.Allocator, input: [:0]const u8) !void {
-    var buf = std.ArrayList(u8).init(alloc);
+    var buf: std.Io.Writer.Allocating = .init(alloc);
+    defer buf.deinit();
     const evaluated = (try testEval(alloc, input)).?;
 
     try testing.expectEqual(ObjectType.Function, evaluated.ty);
     const fnObj = evaluated.cast(.Function);
 
     try testing.expectEqual(fnObj.parameters.len, 1);
-    try (&fnObj.parameters[0].base).toString(buf.writer()); // upcast
-    try testing.expectEqualStrings("x", buf.items);
+    try (&fnObj.parameters[0].base).toString(&buf.writer); // upcast
+    try testing.expectEqualStrings("x", buf.written());
 
     const expectedBody = "(x + 2)";
 
     buf.clearRetainingCapacity(); // clear previous use
-    try (&fnObj.body.base).toString(buf.writer()); // upcast
-    try testing.expectEqualStrings(expectedBody, buf.items);
+    try (&fnObj.body.base).toString(&buf.writer); // upcast
+    try testing.expectEqualStrings(expectedBody, buf.written());
 }
 
 fn testLetStatement(alloc: std.mem.Allocator, input: [:0]const u8, expected: i64) !void {

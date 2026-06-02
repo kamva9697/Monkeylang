@@ -48,7 +48,11 @@ pub const Object = struct {
     };
 
     pub inline fn cast(base: *Object, comptime ty: ObjectType) *ty.Type() {
-        return @fieldParentPtr(ty.Type(), "base", base);
+        // `base` is not necessarily at offset 0 within the parent object type —
+        // Zig may reorder struct fields for alignment — so recover the parent
+        // pointer via @fieldParentPtr rather than a raw @ptrCast. The @alignCast
+        // asserts the parent's higher alignment (Object itself is only 1-aligned).
+        return @alignCast(@fieldParentPtr("base", base));
     }
 
     pub inline fn create(comptime T: type, alloc: Allocator, value: T) !*T {
@@ -81,15 +85,16 @@ pub const Object = struct {
             .Function => {
                 const func = cast(self, .Function);
 
-                var params = std.ArrayList(u8).init(alloc);
-                const paramsWriter = params.writer();
+                var params: std.Io.Writer.Allocating = .init(alloc);
+                defer params.deinit();
+                const paramsWriter = &params.writer;
                 for (func.parameters) |param| {
                     try (param.toNode()).toString(paramsWriter);
                 }
                 try writer.writeAll("fn");
                 try writer.writeAll("(");
-                // const joinedParms = try std.mem.join(alloc, ", ", params.items);
-                try writer.print("{any}", .{params.items});
+                // const joinedParms = try std.mem.join(alloc, ", ", params.written());
+                try writer.print("{any}", .{params.written()});
                 try writer.writeAll(") {\n");
                 try (func.body.toNode()).toString(writer);
                 try writer.writeAll("\n");

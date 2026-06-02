@@ -150,8 +150,15 @@ pub fn extendedEnvFunction(alloc: Allocator, func: *Object, args: []*Object) !*E
 }
 
 fn unwrapReturnValue(obj: *Object) *Object {
-    const returnValue = obj.cast(.ReturnValue);
-    return returnValue.value;
+    // Only unwrap when the body actually produced a ReturnValue; a block whose
+    // last statement is a bare expression (e.g. `fn(a,b){ a + b; }`) yields that
+    // value directly. Casting it to ReturnValue unconditionally would read an
+    // unrelated field as a pointer.
+    if (obj.ty == .ReturnValue) {
+        const returnValue = obj.cast(.ReturnValue);
+        return returnValue.value;
+    }
+    return obj;
 }
 
 pub fn evalExpressions(
@@ -159,15 +166,15 @@ pub fn evalExpressions(
     exps: []*Ast.Node,
     env: *Environment,
 ) ![]*Object {
-    var result = std.ArrayList(*Object).init(alloc);
+    var result: std.ArrayList(*Object) = .empty;
 
     for (exps) |e| {
         const evaled = (try eval(alloc, e, env)).?;
         if (isError(evaled)) {
-            try result.append(evaled);
+            try result.append(alloc, evaled);
             return result.items;
         }
-        try result.append(evaled);
+        try result.append(alloc, evaled);
     }
     return result.items;
 }

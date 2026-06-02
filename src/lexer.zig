@@ -60,12 +60,12 @@ pub const Lexer = struct {
                 }
                 break :blk .{ .Type = .BANG, .Literal = token.BANG };
             },
-            'a'...'z', 'A'...'Z' => |_| blk: {
+            'a'...'z', 'A'...'Z' => blk: {
                 const literal = self.readIdentifier();
                 const _type = token.getKeyword(literal);
                 break :blk .{ .Type = _type, .Literal = literal };
             },
-            '0'...'9' => |_| blk: {
+            '0'...'9' => blk: {
                 const literal = self.readNumber();
                 break :blk .{ .Type = .INT, .Literal = literal };
             },
@@ -97,7 +97,7 @@ pub const Lexer = struct {
     pub inline fn readNumber(self: *Lexer) []const u8 {
         const curPos = self.position;
 
-        var iter = mem.tokenize(u8, self.input[curPos..], " -=+,./{[]\\();:}*|>");
+        var iter = mem.tokenizeAny(u8, self.input[curPos..], " -=+,./{[]\\();:}*|>");
         const ident = iter.next() orelse unreachable;
 
         advancePointers(self, ident.len);
@@ -108,7 +108,7 @@ pub const Lexer = struct {
     pub inline fn readIdentifier(self: *Lexer) []const u8 {
         const position = self.position;
 
-        var iter = mem.tokenize(u8, self.input[position..], " ,|./{[]\\();:}&^");
+        var iter = mem.tokenizeAny(u8, self.input[position..], " ,|./{[]\\();:}&^");
         const ident = iter.next() orelse unreachable;
 
         advancePointers(self, ident.len);
