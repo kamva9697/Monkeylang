@@ -34,6 +34,7 @@ pub const Parser = struct {
         UnexpectedToken,
         ParameterListTooLong,
         InvalidCharacter,
+        IntegerOverflow,
         TypeMismatch,
         UnknownOperator,
     };
@@ -137,8 +138,18 @@ pub const Parser = struct {
             .LET => try self.parseLetStatement(),
             .RETURN => try self.parseReturnStatement(),
 
-            else => try self.parseExpression(.LOWEST),
+            else => try self.parseExpressionStatement(),
         };
+    }
+
+    pub fn parseExpressionStatement(self: *Parser) !?*Node {
+        const expr = try self.parseExpression(.LOWEST) orelse return null;
+
+        // Consume the `;` here, not in parseExpression: a nested call that ate it would
+        // let the outer expression run on into the next statement.
+        if (self.peekTokenIs(.SEMICOLON)) self.nextToken();
+
+        return expr;
     }
 
     pub fn parseExpression(self: *Parser, prec: Precedence) !?*Node {
@@ -147,7 +158,7 @@ pub const Parser = struct {
         const prefixFn = self.prefixParseFns.get(self.curToken.Type);
 
         if (prefixFn) |unwrapped_prefixFn| {
-            leftExprNode = try unwrapped_prefixFn(self);
+            leftExprNode = try unwrapped_prefixFn(self) orelse return null;
         } else {
             // Add Error Context
             try self.noPrefixParseFnError(self.curToken.Type);
@@ -158,12 +169,9 @@ pub const Parser = struct {
             const infix = self.infixParseFns.get(self.peekToken.Type);
             if (infix) |unwrapped_infix| {
                 self.nextToken();
-                leftExprNode = try unwrapped_infix(self, leftExprNode);
+                leftExprNode = try unwrapped_infix(self, leftExprNode) orelse return null;
             }
         }
-
-        // consume semicolon after statement
-        if (self.peekTokenIs(.SEMICOLON)) self.nextToken();
 
         return leftExprNode;
     }
@@ -179,7 +187,7 @@ pub const Parser = struct {
         const prec = self.curPrecedence();
         self.nextToken();
 
-        exprNode.rightExprPtr = try self.parseExpression(prec);
+        exprNode.rightExprPtr = try self.parseExpression(prec) orelse return null;
         return exprNode.toNode();
     }
 
@@ -193,11 +201,7 @@ pub const Parser = struct {
 
         self.nextToken();
 
-        var rightExpr: *Node = try self.arena.allocator().create(Node);
-
-        rightExpr = (try self.parseExpression(.PREFIX)).?;
-
-        exprPtr.rightExprPtr = rightExpr;
+        exprPtr.rightExprPtr = try self.parseExpression(.PREFIX) orelse return null;
 
         return exprPtr.toNode();
     }
@@ -214,7 +218,7 @@ pub const Parser = struct {
     pub fn parseGroupedExpression(self: *Parser) !?*Node {
         self.nextToken();
 
-        const exprPtr = (try self.parseExpression(.LOWEST)).?;
+        const exprPtr = try self.parseExpression(.LOWEST) orelse return null;
 
         if (!(try self.expectPeek(TokenType.RPAREN))) {
             return null;
@@ -243,7 +247,7 @@ pub const Parser = struct {
             return null;
         }
 
-        lit.parameters = (try self.parseFunctionParameters()).?;
+        lit.parameters = try self.parseFunctionParameters() orelse return null;
 
         if (!(try self.expectPeek(.LBRACE))) {
             return null;
@@ -263,7 +267,9 @@ pub const Parser = struct {
             self.nextToken();
             return try identifiers.toOwnedSlice(self.arena.allocator());
         }
-        self.nextToken();
+        if (!(try self.expectPeek(.IDENT))) {
+            return null;
+        }
 
         var ident = try self.arena.allocator().create(Node.Identifier);
         ident.* = Node.Identifier{
@@ -275,7 +281,9 @@ pub const Parser = struct {
 
         while (self.peekTokenIs(.COMMA)) {
             self.nextToken();
-            self.nextToken();
+            if (!(try self.expectPeek(.IDENT))) {
+                return null;
+            }
             ident = try self.arena.allocator().create(Node.Identifier);
             ident.* = Node.Identifier{
                 .token = self.curToken,
@@ -305,10 +313,18 @@ pub const Parser = struct {
         litPtr.* = Node.IntegerLiteral{ .token = self.curToken, .value = undefined };
 
         if (!(try self.isDigit(litPtr.token.Literal))) {
-            return litPtr.toNode();
+            return null;
         }
 
-        litPtr.value = try std.fmt.parseInt(u32, litPtr.token.Literal, 10);
+        // The lexer only produces digits, so overflow is the only possible failure.
+        litPtr.value = std.fmt.parseInt(i64, litPtr.token.Literal, 10) catch {
+            const ctx: ParserErrorContext = .{
+                .err = ParserError.IntegerOverflow,
+                .msg = try self.arena.allocator().print("Integer literal out of range: {s}", .{litPtr.token.Literal}),
+            };
+            try self.errors.append(self.arena.allocator(), ctx);
+            return null;
+        };
 
         return litPtr.toNode();
     }
@@ -327,7 +343,7 @@ pub const Parser = struct {
             return null;
         }
 
-        ifExprPtr.condition = (try self.parseExpression(.LOWEST)).?;
+        ifExprPtr.condition = try self.parseExpression(.LOWEST) orelse return null;
 
         if (!(try self.expectPeek(TokenType.LBRACE))) {
             return null;
@@ -339,11 +355,10 @@ pub const Parser = struct {
         if (self.peekTokenIs(TokenType.ELSE)) {
             self.nextToken();
 
-            if (!self.peekTokenIs(TokenType.LBRACE)) {
+            if (!(try self.expectPeek(TokenType.LBRACE))) {
                 return null;
             }
 
-            self.nextToken(); // skip '{'
             var altNode = (try self.parseBlockStatement()).?;
             ifExprPtr.alternative = altNode.cast(.Block);
         }
@@ -356,7 +371,7 @@ pub const Parser = struct {
         expr.* = Node.CallExpression{
             .token = self.curToken,
             .function = func.?,
-            .arguments = (try self.parseCallArguments()).?,
+            .arguments = try self.parseCallArguments() orelse return null,
         };
 
         return expr.toNode();
@@ -372,12 +387,12 @@ pub const Parser = struct {
 
         self.nextToken();
 
-        try args.append(self.arena.allocator(), (try self.parseExpression(.LOWEST)).?);
+        try args.append(self.arena.allocator(), try self.parseExpression(.LOWEST) orelse return null);
 
         while (self.peekTokenIs(.COMMA)) {
             self.nextToken();
             self.nextToken();
-            try args.append(self.arena.allocator(), (try self.parseExpression(.LOWEST)).?);
+            try args.append(self.arena.allocator(), try self.parseExpression(.LOWEST) orelse return null);
         }
 
         if (!(try self.expectPeek(.RPAREN))) {
@@ -404,6 +419,9 @@ pub const Parser = struct {
             }
             self.nextToken();
         }
+        if (self.curTokenIs(TokenType.EOF)) {
+            try self.peekError(TokenType.RBRACE);
+        }
         return blockPtr.toNode();
     }
 
@@ -429,7 +447,7 @@ pub const Parser = struct {
 
         self.nextToken();
 
-        letStmtPtr.value = (try self.parseExpression(.LOWEST)).?;
+        letStmtPtr.value = try self.parseExpression(.LOWEST) orelse return null;
         if (self.peekTokenIs(.SEMICOLON)) {
             self.nextToken();
         }
@@ -444,7 +462,7 @@ pub const Parser = struct {
 
         self.nextToken();
 
-        returnStmtPtr.returnValue = (try self.parseExpression(.LOWEST)).?;
+        returnStmtPtr.returnValue = try self.parseExpression(.LOWEST) orelse return null;
 
         if (self.peekTokenIs(.SEMICOLON)) {
             self.nextToken();

@@ -290,6 +290,65 @@ test "CallExpressionsTest" {
     try CallExpressionTest("add(1, 2 * 3, 4 + 5);");
 }
 
+test "MalformedInputReportsErrors" {
+    // Each input used to panic on a null unwrap or was silently dropped.
+    // The first reported error is pinned so the messages stay stable.
+    const cases = [_]struct { input: [:0]const u8, err: []const u8 }{
+        .{ .input = "let x =", .err = "Parser Error: No Prefix function found for .EOF" },
+        .{ .input = "let x = ;", .err = "Parser Error: No Prefix function found for .SEMICOLON" },
+        .{ .input = "-", .err = "Parser Error: No Prefix function found for .EOF" },
+        .{ .input = "!", .err = "Parser Error: No Prefix function found for .EOF" },
+        .{ .input = "1 +", .err = "Parser Error: No Prefix function found for .EOF" },
+        .{ .input = "()", .err = "Parser Error: No Prefix function found for .RPAREN" },
+        .{ .input = "(", .err = "Parser Error: No Prefix function found for .EOF" },
+        .{ .input = "(1", .err = "Expected next token to be .RPAREN got '.EOF' instead" },
+        .{ .input = "return;", .err = "Parser Error: No Prefix function found for .SEMICOLON" },
+        .{ .input = "add(1,", .err = "Parser Error: No Prefix function found for .EOF" },
+        .{ .input = "f(1,)", .err = "Parser Error: No Prefix function found for .RPAREN" },
+        .{ .input = "fn(x y) { x }", .err = "Expected next token to be .RPAREN got '.IDENT' instead" },
+        .{ .input = "fn(1) { 1 }", .err = "Expected next token to be .IDENT got '.INT' instead" },
+        .{ .input = "fn(x,) { x }", .err = "Expected next token to be .IDENT got '.RPAREN' instead" },
+        .{ .input = "fn(x) + 1", .err = "Expected next token to be .LBRACE got '.PLUS' instead" },
+        .{ .input = "fn(x) { x", .err = "Expected next token to be .RBRACE got '.EOF' instead" },
+        .{ .input = "if () { 1 }", .err = "Parser Error: No Prefix function found for .RPAREN" },
+        .{ .input = "if (true) { 1", .err = "Expected next token to be .RBRACE got '.EOF' instead" },
+        .{ .input = "if (true) { 1 } else 2", .err = "Expected next token to be .LBRACE got '.INT' instead" },
+        .{ .input = "9223372036854775808", .err = "Integer literal out of range: 9223372036854775808" },
+        .{ .input = "\"abc", .err = "Parser Error: No Prefix function found for .ILLEGAL" },
+        .{ .input = "@", .err = "Parser Error: No Prefix function found for .ILLEGAL" },
+        .{ .input = ";", .err = "Parser Error: No Prefix function found for .SEMICOLON" },
+        // Bitwise operators are lexed but the parser has no rules for them yet.
+        .{ .input = "1 & 2", .err = "Parser Error: No Prefix function found for .AND" },
+    };
+    for (cases) |tc| {
+        try expectFirstParseError(tc.input, tc.err);
+    }
+}
+
+test "IntegerLiteralRange" {
+    var p = Parser.init("9223372036854775807; 5000000000", testing.allocator);
+    defer p.deinit();
+    const program = (try p.parseProgram()).cast(.Tree);
+
+    checkParserErrors(&p);
+    try testIntegerLiteral(program.statements.items[0], std.math.maxInt(i64));
+    try testIntegerLiteral(program.statements.items[1], 5000000000);
+}
+
+test "SemicolonEndsStatement" {
+    // A `;` after a nested operand used to be consumed too early, so the outer
+    // expression carried on: `let a = 1 + 2; -3` parsed as `let a = (1 + 2) - 3`.
+    try ToStringTest("let a = 1 + 2; -3", "let a = (1 + 2);(-3)");
+    try ToStringTest("x * 2; -1", "(x * 2)(-1)");
+    try ToStringTest("1 + 2; (3)", "(1 + 2)3");
+    try ToStringTest("return 1 + 2; -3", "return (1 + 2);(-3)");
+}
+
+test "FunctionLiteralToString" {
+    try ToStringTest("let f = fn(x, y) { x + y; }", "let f = fn(x, y) (x + y);");
+    try ToStringTest("fn() { 1 }", "fn() 1");
+}
+
 ////////// Helpers /////////////////////////
 pub fn CallExpressionTest(comptime input: [:0]const u8) !void {
     var gpa_test: std.heap.SafeAllocator = .init(std.heap.page_allocator, .{});
@@ -464,7 +523,7 @@ fn testIdentifierLiteral(node: *Node, val: []const u8) !void {
     try testing.expectEqualStrings(val, identifierNode.token.Literal);
 }
 
-fn testIntegerLiteral(node: *Node, value: u32) !void {
+fn testIntegerLiteral(node: *Node, value: i64) !void {
     var buf: [1024]u8 = undefined;
 
     const stmt = node.cast(.IntegerLiteral);
@@ -620,6 +679,21 @@ fn testReturnStatement() !void {
 
         try testing.expectEqual(Node.Id.ReturnStatement, node.id);
     }
+}
+
+fn expectFirstParseError(input: [:0]const u8, expected: []const u8) !void {
+    var p = Parser.init(input, testing.allocator);
+    defer p.deinit();
+    _ = try p.parseProgram();
+
+    if (p.errors.items.len == 0) {
+        std.debug.print("input `{s}` parsed without errors\n", .{input});
+        return error.TestExpectedParseError;
+    }
+    testing.expectEqualStrings(expected, p.errors.items[0].msg) catch |err| {
+        std.debug.print("input: `{s}`\n", .{input});
+        return err;
+    };
 }
 
 fn checkParserErrors(parser: *Parser) void {

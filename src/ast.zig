@@ -114,7 +114,7 @@ pub const Node = struct {
         pub const Self = @This();
         base: Node = .{ .id = .IntegerLiteral },
         token: Token,
-        value: u32,
+        value: i64,
 
         pub inline fn toNode(self: *Self) *Node {
             return &self.base;
@@ -327,8 +327,9 @@ pub const Node = struct {
                 }
                 try writer.writeAll("(");
 
-                for (functionLiteralNode.parameters) |params| {
-                    try writer.print("{s}, ", .{params.value});
+                for (functionLiteralNode.parameters, 0..) |params, i| {
+                    if (i > 0) try writer.writeAll(", ");
+                    try writer.writeAll(params.value);
                 }
                 try writer.writeAll(") ");
 
