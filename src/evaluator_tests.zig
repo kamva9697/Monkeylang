@@ -317,6 +317,21 @@ test "TestPinnedSemantics" {
     try testErrorHandling(allocator, "if (false) { 1 } == if (false) { 1 }", "Unknown Operator: Null == Null");
 }
 
+test "TestCallDepthLimit" {
+    var arena = std.heap.ArenaAllocator.init(gpa.allocator());
+    const allocator = arena.allocator();
+    defer arena.deinit();
+
+    const countdown = "let f = fn(n) { if (n == 0) { 0 } else { 1 + f(n - 1) } }; ";
+    // f(999) nests exactly 1000 calls, the limit; f(1000) needs one more.
+    try testIntegerObject(try testEvalOnEvaluatorStack(allocator, countdown ++ "f(999)"), 999);
+    const beyond = try testEvalOnEvaluatorStack(allocator, countdown ++ "f(1000)");
+    try testing.expectEqual(ObjectType.Error, beyond.ty);
+    try testing.expectEqualStrings("Maximum call depth of 1000 exceeded", beyond.cast(.Error).message);
+    // The depth resets after an error, so later calls work normally.
+    try testIntegerObject(try testEvalOnEvaluatorStack(allocator, countdown ++ "f(10)"), 10);
+}
+
 test "TestInspect" {
     var arena = std.heap.ArenaAllocator.init(gpa.allocator());
     const allocator = arena.allocator();
@@ -422,6 +437,20 @@ fn testEval(alloc: std.mem.Allocator, input: [:0]const u8) !?*Object {
     }
 
     return try evaluator.eval(alloc, rootNode, envPtr);
+}
+
+// Runs testEval on a thread with the evaluator's stack size, as the REPL does, so deep
+// recursion reaches max_call_depth on any OS instead of overflowing the test runner's stack.
+fn testEvalOnEvaluatorStack(alloc: std.mem.Allocator, input: [:0]const u8) !*Object {
+    const Run = struct {
+        fn run(a: std.mem.Allocator, in: [:0]const u8, result: *anyerror!?*Object) void {
+            result.* = testEval(a, in);
+        }
+    };
+    var result: anyerror!?*Object = null;
+    const thread = try std.Thread.spawn(.{ .stack_size = evaluator.stack_size }, Run.run, .{ alloc, input, &result });
+    thread.join();
+    return (try result).?;
 }
 
 fn testInspect(alloc: std.mem.Allocator, input: [:0]const u8, expected: []const u8) !void {

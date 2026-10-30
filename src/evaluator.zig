@@ -15,6 +15,16 @@ pub const TRUE_VALUE = &Object.Boolean{ .value = true };
 pub const FALSE_VALUE = &Object.Boolean{ .value = false };
 pub const NULL_VALUE = &Object.Null{};
 
+/// Deepest nesting of Monkey function calls. Beyond it eval returns an error object
+/// instead of overflowing the native stack, since every call nests several eval frames.
+pub const max_call_depth = 1000;
+/// Native stack size to run the evaluator on so `max_call_depth` is reachable with room
+/// to spare, even in Debug builds. The main thread's stack is set by the OS and is too
+/// small for that.
+pub const stack_size = 64 * 1024 * 1024;
+
+threadlocal var call_depth: usize = 0;
+
 pub fn eval(
     alloc: Allocator,
     node: *Ast.Node,
@@ -152,6 +162,12 @@ pub fn applyFunction(alloc: Allocator, fnObj: *Object, args: []*Object) !*Object
                     .{ args.len, function.parameters.len },
                 );
             }
+            if (call_depth >= max_call_depth) {
+                return newError(alloc, "Maximum call depth of {d} exceeded", .{max_call_depth});
+            }
+            call_depth += 1;
+            defer call_depth -= 1;
+
             const extendedEnv = try extendedEnvFunction(alloc, fnObj, args);
             const evaluated = (try eval(alloc, function.body.toNode(), extendedEnv)).?;
             return unwrapReturnValue(evaluated);
