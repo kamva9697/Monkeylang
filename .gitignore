@@ -2,4 +2,7 @@ zig-out/
 .zigmod/**
 zig-cache/
 waiig_code_1.3/
+.zig-cache/
+test.s
+.DS_Store
 
