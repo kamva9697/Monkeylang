@@ -9,6 +9,7 @@ const ObjectType = Object.ObjectType;
 const Allocator = std.mem.Allocator;
 const Math = std.math;
 const Environment = @import("environment.zig").Environment;
+const builtins = @import("builtins.zig");
 
 pub const TRUE_VALUE = &Object.Boolean{ .value = true };
 pub const FALSE_VALUE = &Object.Boolean{ .value = false };
@@ -132,10 +133,16 @@ pub fn eval(
 }
 
 pub fn applyFunction(alloc: Allocator, fnObj: *Object, args: []*Object) !*Object {
-    const function = fnObj.cast(.Function);
-    const extendedEnv = try extendedEnvFunction(alloc, fnObj, args);
-    const evaluated = (try eval(alloc, function.body.toNode(), extendedEnv)).?;
-    return unwrapReturnValue(evaluated);
+    return switch (fnObj.ty) {
+        .Function => {
+            const function = fnObj.cast(.Function);
+            const extendedEnv = try extendedEnvFunction(alloc, fnObj, args);
+            const evaluated = (try eval(alloc, function.body.toNode(), extendedEnv)).?;
+            return unwrapReturnValue(evaluated);
+        },
+        .Builtin => fnObj.cast(.Builtin)._fn(alloc, args),
+        else => newError(alloc, "Not a function: {s}", .{fnObj.ty.toString()}),
+    };
 }
 
 pub fn extendedEnvFunction(alloc: Allocator, func: *Object, args: []*Object) !*Environment {
@@ -182,6 +189,7 @@ pub fn evalExpressions(
 pub fn evalIdentifier(alloc: Allocator, node: *Ast.Node, env: *Environment) !*Object {
     const identNode = node.cast(.Identifier);
     const val = env.get(identNode.value) orelse
+        builtins.lookup(identNode.value) orelse
         newError(alloc, "Identifier not found: {s}", .{identNode.value});
 
     return val;

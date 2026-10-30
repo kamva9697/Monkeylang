@@ -43,5 +43,8 @@ Development of the Monkey programming language with [zig](https://ziglang.org/) 
         - [x] Error handling
         - [x] Bindings and Environment
         - [x] Functions and Function Calls
+    - [x] Built-in Functions:
+        - [x] len
+        - [x] puts
 
 

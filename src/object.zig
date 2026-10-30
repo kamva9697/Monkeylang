@@ -14,6 +14,8 @@ const Environment = @import("environment.zig").Environment;
 pub const Object = struct {
     ty: ObjectType,
 
+    pub const BuiltinFunction = *const fn (alloc: Allocator, args: []*Object) anyerror!*Object;
+
     pub const ObjectType = enum {
         Integer,
         Boolean,
@@ -22,6 +24,7 @@ pub const Object = struct {
         Function,
         Error,
         String,
+        Builtin,
 
         pub inline fn Type(comptime ty: ObjectType) type {
             return switch (ty) {
@@ -32,6 +35,7 @@ pub const Object = struct {
                 .Function => Function,
                 .String => String,
                 .Error => Error,
+                .Builtin => Builtin,
             };
         }
         pub inline fn toString(ty: ObjectType) []const u8 {
@@ -43,6 +47,7 @@ pub const Object = struct {
                 .Function => "Function",
                 .String => "String",
                 .Error => "Error",
+                .Builtin => "Builtin",
             };
         }
     };
@@ -82,6 +87,9 @@ pub const Object = struct {
                 const str = cast(self, .String);
                 try writer.print("{s}", .{str.value});
             },
+            .Builtin => {
+                try writer.writeAll("Builtin Fn");
+            },
             .Function => {
                 const func = cast(self, .Function);
 
@@ -105,6 +113,16 @@ pub const Object = struct {
             },
         }
     }
+    pub const Builtin = struct {
+        pub const Self = @This();
+        base: Object = .{ .ty = .Builtin },
+        _fn: BuiltinFunction,
+
+        pub inline fn toObject(self: *Self) *Object {
+            return &self.base;
+        }
+    };
+
     pub const String = struct {
         pub const Self = @This();
         base: Object = .{ .ty = .String },

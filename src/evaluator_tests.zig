@@ -178,6 +178,21 @@ test "TestStringConcat" {
     );
 }
 
+test "TestBuiltinFunctions" {
+    var arena = std.heap.ArenaAllocator.init(gpa.allocator());
+    const allocator = arena.allocator();
+    defer arena.deinit();
+
+    try testIntegerExpressions(allocator, "len(\"\")", 0);
+    try testIntegerExpressions(allocator, "len(\"four\")", 4);
+    try testIntegerExpressions(allocator, "len(\"hello world\")", 11);
+    try testIntegerExpressions(allocator, "let len = fn(x) { 42 }; len(\"four\")", 42);
+    try testErrorHandling(allocator, "len(1)", "Argument to 'len' not supported, got Integer");
+    try testErrorHandling(allocator, "len(\"one\", \"two\")", "Wrong number of arguments: got 2, want 1");
+    try testErrorHandling(allocator, "5(1)", "Not a function: Integer");
+    try testNullObject((try testEval(allocator, "puts(\"hello\", 1)")).?);
+}
+
 fn testStringConcatenation(alloc: std.mem.Allocator, input: [:0]const u8, expected: []const u8) !void {
     const evaluated = (try testEval(alloc, input)).?;
 
