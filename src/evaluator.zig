@@ -66,19 +66,28 @@ pub fn eval(
         .PrefixExpression => {
             const prefNode = node.cast(.PrefixExpression);
 
-            const right = try eval(alloc, prefNode.rightExprPtr.?, env);
-            return try evalPrefixExpressions(alloc, prefNode.operator, right.?);
+            const right = (try eval(alloc, prefNode.rightExprPtr.?, env)).?;
+            if (isError(right)) {
+                return right;
+            }
+            return try evalPrefixExpressions(alloc, prefNode.operator, right);
         },
         .InfixExpression => {
             const infixNode = node.cast(.InfixExpression);
 
-            const left = try eval(alloc, infixNode.leftExprPtr.?, env);
-            const right = try eval(alloc, infixNode.rightExprPtr.?, env);
+            const left = (try eval(alloc, infixNode.leftExprPtr.?, env)).?;
+            if (isError(left)) {
+                return left;
+            }
+            const right = (try eval(alloc, infixNode.rightExprPtr.?, env)).?;
+            if (isError(right)) {
+                return right;
+            }
             return try evalInfixExpression(
                 alloc,
                 infixNode.operator,
-                right.?,
-                left.?,
+                right,
+                left,
             );
         },
         .Block => {
@@ -113,8 +122,8 @@ pub fn eval(
                 return callNode;
             }
             const args = try evalExpressions(alloc, funcNode.arguments, env);
-            if (args.len == 1 and isError(args[0])) {
-                return args[0];
+            if (args.len > 0 and isError(args[args.len - 1])) {
+                return args[args.len - 1];
             }
 
             return try applyFunction(alloc, callNode, args);
@@ -136,6 +145,13 @@ pub fn applyFunction(alloc: Allocator, fnObj: *Object, args: []*Object) !*Object
     return switch (fnObj.ty) {
         .Function => {
             const function = fnObj.cast(.Function);
+            if (args.len != function.parameters.len) {
+                return newError(
+                    alloc,
+                    "Wrong number of arguments: got {d}, want {d}",
+                    .{ args.len, function.parameters.len },
+                );
+            }
             const extendedEnv = try extendedEnvFunction(alloc, fnObj, args);
             const evaluated = (try eval(alloc, function.body.toNode(), extendedEnv)).?;
             return unwrapReturnValue(evaluated);
@@ -229,13 +245,14 @@ pub fn evalProgram(alloc: Allocator, tree: []*Node, env: *Environment) !?*Object
 }
 
 pub fn evalBlock(alloc: Allocator, block: *Node.Block, env: *Environment) !?*Object {
-    var result: ?*Object = null;
+    // An empty block, like `if (true) {}` or `fn() {}()`, evaluates to null.
+    var result: *Object = @constCast(NULL_VALUE).toObject();
 
     for (block.statements.items) |stmt| {
         result = (try eval(alloc, stmt, env)).?;
 
-        if (result.?.ty == .ReturnValue or result.?.ty == .Error) {
-            return result.?;
+        if (result.ty == .ReturnValue or result.ty == .Error) {
+            return result;
         }
     }
     return result;
@@ -243,6 +260,9 @@ pub fn evalBlock(alloc: Allocator, block: *Node.Block, env: *Environment) !?*Obj
 
 pub fn evalIfExpression(alloc: Allocator, ifNode: *Node.IfExpression, env: *Environment) !?*Object {
     const condition = (try eval(alloc, ifNode.condition, env)).?;
+    if (isError(condition)) {
+        return condition;
+    }
 
     if (isTruthy(condition)) {
         return try eval(alloc, ifNode.consequence.toNode(), env);
@@ -375,43 +395,21 @@ pub fn evalIntegerInfixExpressions(
     const rightVal = rightIntegerObj.value;
 
     return switch (op) {
-        .plus => {
+        .plus, .minus, .multiply, .divide => {
+            const value = switch (op) {
+                .plus => Math.add(i64, leftVal, rightVal),
+                .minus => Math.sub(i64, leftVal, rightVal),
+                .multiply => Math.mul(i64, leftVal, rightVal),
+                .divide => Math.divTrunc(i64, leftVal, rightVal),
+                else => unreachable,
+            } catch |err| return switch (err) {
+                error.DivisionByZero => newError(alloc, "Division by zero: {d} / {d}", .{ leftVal, rightVal }),
+                error.Overflow => newError(alloc, "Integer overflow: {d} {s} {d}", .{ leftVal, op.toString(), rightVal }),
+            };
             var obj = try Object.create(
                 Object.Integer,
                 alloc,
-                Object.Integer{
-                    .value = leftVal + rightVal,
-                },
-            );
-            return obj.toObject();
-        },
-        .minus => {
-            var obj = try Object.create(
-                Object.Integer,
-                alloc,
-                Object.Integer{
-                    .value = leftVal - rightVal,
-                },
-            );
-            return obj.toObject();
-        },
-        .multiply => {
-            var obj = try Object.create(
-                Object.Integer,
-                alloc,
-                Object.Integer{
-                    .value = leftVal * rightVal,
-                },
-            );
-            return obj.toObject();
-        },
-        .divide => {
-            var obj = try Object.create(
-                Object.Integer,
-                alloc,
-                Object.Integer{
-                    .value = try Math.divTrunc(i64, leftVal, rightVal),
-                },
+                Object.Integer{ .value = value },
             );
             return obj.toObject();
         },
@@ -434,7 +432,7 @@ pub fn evalIntegerInfixExpressions(
         else => {
             return newError(
                 alloc,
-                "Unkown Operator: {s} {s} {s}",
+                "Unknown Operator: {s} {s} {s}",
                 .{ left.ty.toString(), op.toString(), right.ty.toString() },
             );
         },
@@ -450,7 +448,7 @@ pub fn evalPrefixExpressions(
         .not => try evalBangOperatorExpressions(alloc, right),
         .minus => try evalMinusOperatorExpressions(alloc, right),
         else => {
-            return newError(alloc, "Unkown Operator: {s}{s}", .{ op.toString(), right.ty.toString() });
+            return newError(alloc, "Unknown Operator: {s}{s}", .{ op.toString(), right.ty.toString() });
         },
     };
 }
@@ -468,12 +466,14 @@ pub fn evalMinusOperatorExpressions(
         );
     }
 
-    const boolNode = right.cast(.Integer);
-    const value = boolNode.value;
+    const intNode = right.cast(.Integer);
+    const value = Math.negate(intNode.value) catch {
+        return newError(alloc, "Integer overflow: -({d})", .{intNode.value});
+    };
     var obj = try Object.create(
         Object.Integer,
         alloc,
-        Object.Integer{ .value = -value },
+        Object.Integer{ .value = value },
     );
     return obj.toObject();
 }
@@ -495,7 +495,7 @@ pub fn evalBangOperatorExpressions(alloc: Allocator, right: *Object) !*Object {
             };
         },
         .Null => {
-            var obj = @constCast(NULL_VALUE);
+            var obj = @constCast(TRUE_VALUE);
             return obj.toObject();
         },
         else => {

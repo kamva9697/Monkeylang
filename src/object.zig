@@ -93,19 +93,14 @@ pub const Object = struct {
             .Function => {
                 const func = cast(self, .Function);
 
-                var params: std.Io.Writer.Allocating = .init(alloc);
-                defer params.deinit();
-                const paramsWriter = &params.writer;
-                for (func.parameters) |param| {
-                    try (param.toNode()).toString(paramsWriter);
+                try writer.writeAll("fn(");
+                for (func.parameters, 0..) |param, i| {
+                    if (i > 0) try writer.writeAll(", ");
+                    try writer.writeAll(param.value);
                 }
-                try writer.writeAll("fn");
-                try writer.writeAll("(");
-                // const joinedParms = try std.mem.join(alloc, ", ", params.written());
-                try writer.print("{any}", .{params.written()});
                 try writer.writeAll(") {\n");
                 try (func.body.toNode()).toString(writer);
-                try writer.writeAll("\n");
+                try writer.writeAll("\n}");
             },
             .Error => {
                 const err = cast(self, .Error);

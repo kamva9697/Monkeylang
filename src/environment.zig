@@ -36,7 +36,7 @@ pub const Environment = struct {
     pub fn get(self: *Environment, name: []const u8) ?*Object {
         return self.store.get(name) orelse {
             if (self.outer) |outer_env| {
-                return outer_env.store.get(name);
+                return outer_env.get(name);
             }
             return null;
         };

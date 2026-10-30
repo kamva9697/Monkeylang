@@ -193,6 +193,145 @@ test "TestBuiltinFunctions" {
     try testNullObject((try testEval(allocator, "puts(\"hello\", 1)")).?);
 }
 
+test "TestFunctionApplication" {
+    var arena = std.heap.ArenaAllocator.init(gpa.allocator());
+    const allocator = arena.allocator();
+    defer arena.deinit();
+
+    try testIntegerExpressions(allocator, "let identity = fn(x) { x; }; identity(5);", 5);
+    try testIntegerExpressions(allocator, "let identity = fn(x) { return x; }; identity(5);", 5);
+    try testIntegerExpressions(allocator, "let double = fn(x) { x * 2; }; double(5);", 10);
+    try testIntegerExpressions(allocator, "let add = fn(x, y) { x + y; }; add(5, 5);", 10);
+    try testIntegerExpressions(allocator, "let add = fn(x, y) { x + y; }; add(5 + 5, add(5, 5));", 20);
+    try testIntegerExpressions(allocator, "fn(x) { x; }(5)", 5);
+    try testIntegerExpressions(allocator, "fn() { 1 }()", 1);
+    try testIntegerExpressions(allocator, "let apply = fn(f, x) { f(x) }; apply(fn(n) { n * 3 }, 4)", 12);
+}
+
+test "TestClosuresAndScope" {
+    var arena = std.heap.ArenaAllocator.init(gpa.allocator());
+    const allocator = arena.allocator();
+    defer arena.deinit();
+
+    try testIntegerExpressions(allocator, "let newAdder = fn(x) { fn(y) { x + y } }; let addTwo = newAdder(2); addTwo(2);", 4);
+    // Lookups walk every enclosing scope, so a closure two levels deep still sees globals.
+    try testIntegerExpressions(allocator, "let z = 1; let f = fn(x) { fn(y) { x + y + z } }; f(1)(2)", 4);
+    // Closures share their defining environment, so they see later rebinding.
+    try testIntegerExpressions(allocator, "let x = 1; let f = fn() { x }; let x = 2; f()", 2);
+    // Parameters shadow outer names without changing them.
+    try testIntegerExpressions(allocator, "let x = 1; let f = fn(x) { x }; f(5) + x", 6);
+}
+
+test "TestRecursionAndNestedReturns" {
+    var arena = std.heap.ArenaAllocator.init(gpa.allocator());
+    const allocator = arena.allocator();
+    defer arena.deinit();
+
+    try testIntegerExpressions(allocator, "let fact = fn(n) { if (n < 2) { 1 } else { n * fact(n - 1) } }; fact(10)", 3628800);
+    try testIntegerExpressions(allocator, "let fib = fn(n) { if (n < 2) { n } else { fib(n - 1) + fib(n - 2) } }; fib(15)", 610);
+    try testIntegerExpressions(allocator, "if (10 > 1) { if (10 > 1) { return 10; } return 1; }", 10);
+    try testIntegerExpressions(allocator, "let f = fn(x) { if (x > 0) { return 1; } return 0; }; f(5)", 1);
+    try testIntegerExpressions(allocator, "let f = fn(x) { if (x > 0) { return 1; } return 0; }; f(-5)", 0);
+}
+
+test "TestErrorPropagation" {
+    var arena = std.heap.ArenaAllocator.init(gpa.allocator());
+    const allocator = arena.allocator();
+    defer arena.deinit();
+
+    // An error in any operand, condition or argument becomes the result of the whole expression.
+    const msg = "Identifier not found: foo";
+    try testErrorHandling(allocator, "foo + 1", msg);
+    try testErrorHandling(allocator, "1 + foo", msg);
+    try testErrorHandling(allocator, "-foo", msg);
+    try testErrorHandling(allocator, "!foo", msg);
+    try testErrorHandling(allocator, "if (foo) { 1 } else { 2 }", msg);
+    try testErrorHandling(allocator, "let add = fn(a, b) { a + b }; add(1, foo)", msg);
+    try testErrorHandling(allocator, "puts(1, foo)", msg);
+    try testErrorHandling(allocator, "foo(1)", msg);
+    try testErrorHandling(allocator, "let x = foo; 5", msg);
+    try testErrorHandling(allocator, "fn() { return foo; }()", msg);
+}
+
+test "TestArity" {
+    var arena = std.heap.ArenaAllocator.init(gpa.allocator());
+    const allocator = arena.allocator();
+    defer arena.deinit();
+
+    try testErrorHandling(allocator, "let f = fn(a, b) { a }; f(1)", "Wrong number of arguments: got 1, want 2");
+    try testErrorHandling(allocator, "let f = fn(a) { a }; f(1, 2)", "Wrong number of arguments: got 2, want 1");
+    try testErrorHandling(allocator, "fn() { 1 }(1)", "Wrong number of arguments: got 1, want 0");
+}
+
+test "TestNullValues" {
+    var arena = std.heap.ArenaAllocator.init(gpa.allocator());
+    const allocator = arena.allocator();
+    defer arena.deinit();
+
+    try testNullObject((try testEval(allocator, "if (true) {}")).?);
+    try testNullObject((try testEval(allocator, "if (false) { 1 } else {}")).?);
+    try testNullObject((try testEval(allocator, "fn() {}()")).?);
+    try testBooleanExpressions(allocator, "!if (false) { 1 }", true);
+    try testBooleanExpressions(allocator, "!!if (false) { 1 }", false);
+    // An empty program has no value at all; the REPL prints nothing for it.
+    try testing.expect((try testEval(allocator, "")) == null);
+}
+
+test "TestIntegerEdgeCases" {
+    var arena = std.heap.ArenaAllocator.init(gpa.allocator());
+    const allocator = arena.allocator();
+    defer arena.deinit();
+
+    try testIntegerExpressions(allocator, "9223372036854775807", std.math.maxInt(i64));
+    try testIntegerExpressions(allocator, "-9223372036854775807 - 1", std.math.minInt(i64));
+    try testIntegerExpressions(allocator, "5000000000 * 2", 10000000000);
+    // Division truncates toward zero.
+    try testIntegerExpressions(allocator, "-7 / 2", -3);
+    try testIntegerExpressions(allocator, "7 / -2", -3);
+    try testErrorHandling(allocator, "1 / 0", "Division by zero: 1 / 0");
+    try testErrorHandling(allocator, "9223372036854775807 + 1", "Integer overflow: 9223372036854775807 + 1");
+    try testErrorHandling(allocator, "-9223372036854775807 - 2", "Integer overflow: -9223372036854775807 - 2");
+    try testErrorHandling(allocator, "4294967296 * 4294967296", "Integer overflow: 4294967296 * 4294967296");
+    try testErrorHandling(allocator, "let m = -9223372036854775807 - 1; m / -1", "Integer overflow: -9223372036854775808 / -1");
+    try testErrorHandling(allocator, "let m = -9223372036854775807 - 1; -m", "Integer overflow: -(-9223372036854775808)");
+}
+
+test "TestPinnedSemantics" {
+    var arena = std.heap.ArenaAllocator.init(gpa.allocator());
+    const allocator = arena.allocator();
+    defer arena.deinit();
+
+    // These are current language rules, pinned so any change to them is deliberate.
+    // `let` evaluates to the bound value, which is why the REPL echoes it.
+    try testIntegerExpressions(allocator, "let a = 5", 5);
+    try testIntegerExpressions(allocator, "let a = 1; let a = 2; a", 2);
+    // A program evaluates to its last statement.
+    try testIntegerExpressions(allocator, "5 6", 6);
+    // Everything except false and null is truthy, including 0 and "".
+    try testIfExpressions(allocator, "if (0) { 1 } else { 2 }", 1);
+    try testIfExpressions(allocator, "if (\"\") { 1 } else { 2 }", 1);
+    // Comparisons need operands of the same type, and strings and null have no ==.
+    try testErrorHandling(allocator, "1 == true", "Type Mismatch: Integer == Boolean");
+    try testErrorHandling(allocator, "5 < true", "Type Mismatch: Integer < Boolean");
+    try testErrorHandling(allocator, "\"a\" == \"a\"", "Unknown Operator: String == String");
+    try testErrorHandling(allocator, "if (false) { 1 } == if (false) { 1 }", "Unknown Operator: Null == Null");
+}
+
+test "TestInspect" {
+    var arena = std.heap.ArenaAllocator.init(gpa.allocator());
+    const allocator = arena.allocator();
+    defer arena.deinit();
+
+    try testInspect(allocator, "let f = fn(x, y) { x + y }; f", "fn(x, y) {\n(x + y)\n}");
+    try testInspect(allocator, "fn() { 1 }", "fn() {\n1\n}");
+    try testInspect(allocator, "5", "5");
+    try testInspect(allocator, "true", "true");
+    try testInspect(allocator, "if (false) { 1 }", "null");
+    try testInspect(allocator, "\"hi\"", "hi");
+    try testInspect(allocator, "len", "Builtin Fn");
+    try testInspect(allocator, "1 / 0", "Error: Division by zero: 1 / 0");
+}
+
 fn testStringConcatenation(alloc: std.mem.Allocator, input: [:0]const u8, expected: []const u8) !void {
     const evaluated = (try testEval(alloc, input)).?;
 
@@ -267,15 +406,29 @@ fn testIntegerExpressions(alloc: std.mem.Allocator, input: [:0]const u8, expecte
     try testIntegerObject(evaluated, expected);
 }
 
+// `alloc` is the test's arena and also owns the AST. Function objects point into the
+// AST, so the parser is not deinitialized here; the arena frees everything at test end.
 fn testEval(alloc: std.mem.Allocator, input: [:0]const u8) !?*Object {
     var parser = Parser.init(input, alloc);
     var envPtr = try alloc.create(Environment);
     envPtr.store = std.StringHashMap(*Object).init(alloc);
     envPtr.outer = null;
-    defer parser.deinit();
     const rootNode = (try parser.parseProgram());
+    if (parser.errors.items.len != 0) {
+        for (parser.errors.items) |err| {
+            std.debug.print("parser error in `{s}`: {s}\n", .{ input, err.msg });
+        }
+        return error.TestUnexpectedParseError;
+    }
 
-    return (try evaluator.eval(alloc, rootNode, envPtr)).?;
+    return try evaluator.eval(alloc, rootNode, envPtr);
+}
+
+fn testInspect(alloc: std.mem.Allocator, input: [:0]const u8, expected: []const u8) !void {
+    const evaluated = (try testEval(alloc, input)).?;
+    var buf: std.Io.Writer.Allocating = .init(alloc);
+    try evaluated.Inspect(alloc, &buf.writer);
+    try testing.expectEqualStrings(expected, buf.written());
 }
 
 fn testIntegerObject(obj: *Object, expected: i64) !void {
