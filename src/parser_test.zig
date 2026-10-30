@@ -8,7 +8,7 @@ const TokenType = token.TokenType;
 const testing = std.testing;
 
 /// Global Allocator
-var gpa = std.heap.DebugAllocator(.{}){};
+var gpa: std.heap.SafeAllocator = .init(std.heap.page_allocator, .{});
 var allocator = std.heap.ArenaAllocator.init(gpa.allocator());
 const alloc = allocator.allocator();
 
@@ -19,7 +19,7 @@ pub fn deinitGlobalAllocator() void {
 
 test "Parser Error" {
     const input = "let = 5";
-    var gpa_test = std.heap.DebugAllocator(.{}){};
+    var gpa_test: std.heap.SafeAllocator = .init(std.heap.page_allocator, .{});
     defer _ = gpa_test.deinit();
     var p = Parser.init(input, gpa_test.allocator());
     defer p.deinit();
@@ -27,7 +27,7 @@ test "Parser Error" {
 }
 
 test "Debug Parse Simple" {
-    var gpa_test = std.heap.DebugAllocator(.{}){};
+    var gpa_test: std.heap.SafeAllocator = .init(std.heap.page_allocator, .{});
     defer _ = gpa_test.deinit();
     var parser = Parser.init("let x = 5;", gpa_test.allocator());
 
@@ -292,7 +292,7 @@ test "CallExpressionsTest" {
 
 ////////// Helpers /////////////////////////
 pub fn CallExpressionTest(comptime input: [:0]const u8) !void {
-    var gpa_test = std.heap.DebugAllocator(.{}){};
+    var gpa_test: std.heap.SafeAllocator = .init(std.heap.page_allocator, .{});
     defer _ = gpa_test.deinit();
     var par = Parser.init(input, gpa_test.allocator());
     defer par.deinit();
@@ -321,7 +321,7 @@ pub fn FunctionParameterTest(
     comptime input: [:0]const u8,
     comptime expected: []const []const u8,
 ) !void {
-    var gpa_test = std.heap.DebugAllocator(.{}){};
+    var gpa_test: std.heap.SafeAllocator = .init(std.heap.page_allocator, .{});
     defer _ = gpa_test.deinit();
     var par = Parser.init(input, gpa_test.allocator());
     defer par.deinit();
@@ -341,7 +341,7 @@ pub fn FunctionParameterTest(
 }
 
 pub fn FunctionLiteralTest(comptime input: [:0]const u8) !void {
-    var gpa_test = std.heap.DebugAllocator(.{}){};
+    var gpa_test: std.heap.SafeAllocator = .init(std.heap.page_allocator, .{});
     defer _ = gpa_test.deinit();
     var par = Parser.init(input, gpa_test.allocator());
     defer par.deinit();
@@ -375,7 +375,7 @@ pub fn FunctionLiteralTest(comptime input: [:0]const u8) !void {
 }
 
 pub fn IfExpressionTest(comptime input: [:0]const u8) !void {
-    var gpa_test = std.heap.DebugAllocator(.{}){};
+    var gpa_test: std.heap.SafeAllocator = .init(std.heap.page_allocator, .{});
     defer _ = gpa_test.deinit();
     var par = Parser.init(input, gpa_test.allocator());
     defer par.deinit();
@@ -405,7 +405,7 @@ pub fn IfExpressionTest(comptime input: [:0]const u8) !void {
 }
 
 pub fn ToStringTest(comptime input: [:0]const u8, comptime expected: []const u8) !void {
-    var gpa_test = std.heap.DebugAllocator(.{}){};
+    var gpa_test: std.heap.SafeAllocator = .init(std.heap.page_allocator, .{});
     defer _ = gpa_test.deinit();
     var buf: std.Io.Writer.Allocating = .init(gpa_test.allocator());
     defer buf.deinit();
@@ -425,7 +425,7 @@ pub fn ToStringTest(comptime input: [:0]const u8, comptime expected: []const u8)
 pub fn IdentifierLiteralTest(comptime T: type) type {
     return struct {
         pub fn run(comptime input: [:0]const u8, comptime value: []const u8) !void {
-            var gpa_test = std.heap.DebugAllocator(.{}){};
+            var gpa_test: std.heap.SafeAllocator = .init(std.heap.page_allocator, .{});
             defer _ = gpa_test.deinit();
             var par = Parser.init(input, gpa_test.allocator());
             defer par.deinit();
@@ -442,7 +442,7 @@ pub fn IdentifierLiteralTest(comptime T: type) type {
 fn IntegerLiteraltest(comptime T: type) type {
     return struct {
         pub fn run(comptime input: [:0]const u8, comptime value: T) !void {
-            var gpa_test = std.heap.DebugAllocator(.{}){};
+            var gpa_test: std.heap.SafeAllocator = .init(std.heap.page_allocator, .{});
             defer _ = gpa_test.deinit();
             var par = Parser.init(input, gpa_test.allocator());
             defer par.deinit();
@@ -510,7 +510,7 @@ fn testBooleanLiteral(node: *Node, value: bool) !void {
 pub fn PrefixTest(comptime T: type) type {
     return struct {
         pub fn run(comptime input: [:0]const u8, comptime op: ast.Operator, comptime value: T) !void {
-            var gpa_test = std.heap.DebugAllocator(.{}){};
+            var gpa_test: std.heap.SafeAllocator = .init(std.heap.page_allocator, .{});
             defer _ = gpa_test.deinit();
             var par = Parser.init(input, gpa_test.allocator());
             defer par.deinit();
@@ -542,7 +542,7 @@ pub fn InfixTest(comptime T: type) type {
             comptime op: ast.Operator,
             comptime right: T,
         ) !void {
-            var gpa_test = std.heap.DebugAllocator(.{}){};
+            var gpa_test: std.heap.SafeAllocator = .init(std.heap.page_allocator, .{});
             defer _ = gpa_test.deinit();
             var par = Parser.init(input, gpa_test.allocator());
             defer par.deinit();
@@ -566,7 +566,7 @@ pub fn testLetStatements(
     comptime expectedIdentifier: []const u8,
     comptime expectedValue: T,
 ) !void {
-    var gpa_test = std.heap.DebugAllocator(.{}){};
+    var gpa_test: std.heap.SafeAllocator = .init(std.heap.page_allocator, .{});
     defer _ = gpa_test.deinit();
     var parser = Parser.init(input, gpa_test.allocator());
     defer parser.deinit();
@@ -602,7 +602,7 @@ fn testReturnStatement() !void {
         .{ .input = "return foobar;", .expectedValue = "foobar" },
     };
     for (tests) |tc| {
-        var gpa_test = std.heap.DebugAllocator(.{}){};
+        var gpa_test: std.heap.SafeAllocator = .init(std.heap.page_allocator, .{});
         defer _ = gpa_test.deinit();
         var p = Parser.init(tc.input, gpa_test.allocator());
         defer p.deinit();

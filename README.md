@@ -4,8 +4,8 @@ Development of the Monkey programming language with [zig](https://ziglang.org/) 
 
 ### Notes
 
-1. Use [zigup](https://github.com/marler8997/zigup) or [zvm](https://github.com/tristanisham/zvm) to install the zig nightly compiler
-2. Install the `0.12.0-dev.1828+225fe6ddb` zig compiler
+1. Use [zigup](https://github.com/marler8997/zigup) or [zvm](https://github.com/tristanisham/zvm) to install the zig compiler
+2. Install the `0.17.0` zig compiler (`zvm install 0.17.0 && zvm use 0.17.0`)
 3. Run with `zig build run`
 
 

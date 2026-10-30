@@ -11,7 +11,7 @@ const testing = std.testing;
 const Environment = @import("environment.zig").Environment;
 
 /// Global Allocator
-var gpa = std.heap.DebugAllocator(.{}){};
+var gpa: std.heap.SafeAllocator = .init(std.heap.page_allocator, .{});
 
 test "testEvalIntegerExpressions" {
     var arena = std.heap.ArenaAllocator.init(gpa.allocator());

@@ -154,7 +154,7 @@ pub const Parser = struct {
             return null;
         }
 
-        while (!self.peekTokenIs(TokenType.SEMICOLON) and @intFromEnum(prec) < @intFromEnum(self.peekPrecedence())) {
+        while (!self.peekTokenIs(TokenType.SEMICOLON) and @backingInt(prec) < @backingInt(self.peekPrecedence())) {
             const infix = self.infixParseFns.get(self.peekToken.Type);
             if (infix) |unwrapped_infix| {
                 self.nextToken();
@@ -469,8 +469,7 @@ pub const Parser = struct {
             if (!std.ascii.isDigit(c)) {
                 const ctx: ParserErrorContext = .{
                     .err = ParserError.InvalidCharacter,
-                    .msg = try std.fmt.allocPrint(
-                        self.arena.allocator(),
+                    .msg = try self.arena.allocator().print(
                         "Invalid Integer Character: {c} in {s}",
                         .{ c, num },
                     ),
@@ -507,7 +506,7 @@ pub const Parser = struct {
     }
 
     pub inline fn peekError(self: *Parser, tok: TokenType) !void {
-        const msg = try std.fmt.allocPrint(self.arena.allocator(), "Expected next token to be {any} got '{any}' instead", .{ tok, self.peekToken.Type });
+        const msg = try self.arena.allocator().print("Expected next token to be {any} got '{any}' instead", .{ tok, self.peekToken.Type });
 
         const ctx: ParserErrorContext = .{
             .err = ParserError.UnexpectedToken,
@@ -531,7 +530,7 @@ pub const Parser = struct {
     pub fn noPrefixParseFnError(self: *Parser, tok: TokenType) !void {
         var errCtx = ParserErrorContext{ .err = ParserError.NoPrefixParseFn, .msg = undefined };
 
-        const msg = try std.fmt.allocPrint(self.arena.allocator(), "Parser Error: No Prefix function found for {any}", .{tok});
+        const msg = try self.arena.allocator().print("Parser Error: No Prefix function found for {any}", .{tok});
 
         errCtx.msg = msg;
 
@@ -550,7 +549,7 @@ pub const Parser = struct {
 test "initParser" {
     const input = "let five = 5;";
 
-    var gpa = std.heap.DebugAllocator(.{}){};
+    var gpa: std.heap.SafeAllocator = .init(std.heap.page_allocator, .{});
     var parser = Parser.init(input, gpa.allocator());
     defer parser.deinit();
 }

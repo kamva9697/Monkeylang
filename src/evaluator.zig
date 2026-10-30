@@ -192,7 +192,7 @@ pub inline fn isError(obj: *Object) bool {
 }
 
 pub fn newError(alloc: Allocator, comptime format: []const u8, args: anytype) !*Object {
-    const msg = try std.fmt.allocPrint(alloc, format, args);
+    const msg = try alloc.print(format, args);
     var errorObj = try Object.create(
         Object.Error,
         alloc,

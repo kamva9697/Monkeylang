@@ -455,10 +455,7 @@ pub const Operator = enum {
         };
     }
     pub fn fromString(literal: []const u8) ?Operator {
-        const ops = @typeInfo(Operator).@"enum".fields;
-        inline for (ops) |op| {
-            const operator: Operator = @enumFromInt(op.value);
-
+        for (std.enums.values(Operator)) |operator| {
             if (std.mem.eql(u8, operator.toString(), literal)) {
                 return operator;
             }
