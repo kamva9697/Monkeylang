@@ -43,7 +43,7 @@ pub const Lexer = struct {
             '&' => .{ .Type = .AND, .Literal = token.AND },
             '^' => .{ .Type = .XOR, .Literal = token.XOR },
             '\"' => blk: {
-                const literal = self.readString();
+                const literal = self.readString() orelse break :blk .{ .Type = .ILLEGAL, .Literal = token.ILLEGAL };
                 break :blk .{ .Type = .STRING, .Literal = literal };
             },
             '=' => blk: {
@@ -60,7 +60,7 @@ pub const Lexer = struct {
                 }
                 break :blk .{ .Type = .BANG, .Literal = token.BANG };
             },
-            'a'...'z', 'A'...'Z' => blk: {
+            'a'...'z', 'A'...'Z', '_' => blk: {
                 const literal = self.readIdentifier();
                 const _type = token.getKeyword(literal);
                 break :blk .{ .Type = _type, .Literal = literal };
@@ -73,11 +73,13 @@ pub const Lexer = struct {
         };
     }
 
-    pub inline fn readString(self: *Lexer) []const u8 {
+    /// Returns null when the input ends before the closing '"'.
+    pub inline fn readString(self: *Lexer) ?[]const u8 {
         const position = self.position + 1;
 
         self.readChar(); // consume opening '"'
-        while (self.ch != '\"' or self.ch == 0) {
+        while (self.ch != '\"') {
+            if (self.ch == 0) return null;
             self.readChar();
         }
 
@@ -94,26 +96,26 @@ pub const Lexer = struct {
         }
     }
 
+    // Both readers leave `position` on the token's last character, like readChar does.
+    // `input` is 0-terminated, so peeking at `peekPosition` is always in bounds.
     pub inline fn readNumber(self: *Lexer) []const u8 {
-        const curPos = self.position;
-
-        var iter = mem.tokenizeAny(u8, self.input[curPos..], " -=+,./{[]\\();:}*|>");
-        const ident = iter.next() orelse unreachable;
-
-        advancePointers(self, ident.len);
-
-        return ident;
+        const position = self.position;
+        while (ascii.isDigit(self.input[self.peekPosition])) {
+            self.readChar();
+        }
+        return self.input[position .. self.position + 1];
     }
 
     pub inline fn readIdentifier(self: *Lexer) []const u8 {
         const position = self.position;
+        while (isIdentifierChar(self.input[self.peekPosition])) {
+            self.readChar();
+        }
+        return self.input[position .. self.position + 1];
+    }
 
-        var iter = mem.tokenizeAny(u8, self.input[position..], " ,|./{[]\\();:}&^");
-        const ident = iter.next() orelse unreachable;
-
-        advancePointers(self, ident.len);
-
-        return ident;
+    inline fn isIdentifierChar(c: u8) bool {
+        return ascii.isAlphanumeric(c) or c == '_';
     }
 
     inline fn skipWhiteSpace(self: *Lexer) void {
@@ -124,12 +126,6 @@ pub const Lexer = struct {
         while (ascii.isWhitespace(self.ch)) {
             self.readChar();
         }
-    }
-
-    inline fn advancePointers(self: *Lexer, readObjectLen: usize) void {
-        self.position = self.position + readObjectLen - 1;
-        self.peekPosition = self.position + 1;
-        self.ch = self.input[self.position];
     }
 };
 

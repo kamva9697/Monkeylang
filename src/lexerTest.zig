@@ -138,6 +138,104 @@ test "VariableAssignmentTest" {
     try run_test(&variableAssignmentTets, &lex);
 }
 
+test "OperatorsWithoutSpaces" {
+    const input = "let a=5;a+b-c*d/e<f>g==h!=i";
+    var lex = Lexer.init(input);
+
+    try run_test(&[_]Test{
+        .{ .expectedType = .LET, .expectedLiteral = "let" },
+        .{ .expectedType = .IDENT, .expectedLiteral = "a" },
+        .{ .expectedType = .ASSIGN, .expectedLiteral = "=" },
+        .{ .expectedType = .INT, .expectedLiteral = "5" },
+        .{ .expectedType = .SEMICOLON, .expectedLiteral = ";" },
+        .{ .expectedType = .IDENT, .expectedLiteral = "a" },
+        .{ .expectedType = .PLUS, .expectedLiteral = "+" },
+        .{ .expectedType = .IDENT, .expectedLiteral = "b" },
+        .{ .expectedType = .MINUS, .expectedLiteral = "-" },
+        .{ .expectedType = .IDENT, .expectedLiteral = "c" },
+        .{ .expectedType = .ASTERISK, .expectedLiteral = "*" },
+        .{ .expectedType = .IDENT, .expectedLiteral = "d" },
+        .{ .expectedType = .SLASH, .expectedLiteral = "/" },
+        .{ .expectedType = .IDENT, .expectedLiteral = "e" },
+        .{ .expectedType = .LT, .expectedLiteral = "<" },
+        .{ .expectedType = .IDENT, .expectedLiteral = "f" },
+        .{ .expectedType = .GT, .expectedLiteral = ">" },
+        .{ .expectedType = .IDENT, .expectedLiteral = "g" },
+        .{ .expectedType = .EQ, .expectedLiteral = "==" },
+        .{ .expectedType = .IDENT, .expectedLiteral = "h" },
+        .{ .expectedType = .NOT_EQ, .expectedLiteral = "!=" },
+        .{ .expectedType = .IDENT, .expectedLiteral = "i" },
+        .{ .expectedType = .EOF, .expectedLiteral = "" },
+    }, &lex);
+}
+
+test "NumbersStopAtNonDigits" {
+    const input = "5<10 5!=6 5abc";
+    var lex = Lexer.init(input);
+
+    try run_test(&[_]Test{
+        .{ .expectedType = .INT, .expectedLiteral = "5" },
+        .{ .expectedType = .LT, .expectedLiteral = "<" },
+        .{ .expectedType = .INT, .expectedLiteral = "10" },
+        .{ .expectedType = .INT, .expectedLiteral = "5" },
+        .{ .expectedType = .NOT_EQ, .expectedLiteral = "!=" },
+        .{ .expectedType = .INT, .expectedLiteral = "6" },
+        .{ .expectedType = .INT, .expectedLiteral = "5" },
+        .{ .expectedType = .IDENT, .expectedLiteral = "abc" },
+    }, &lex);
+}
+
+test "IdentifierCharacters" {
+    const input = "my_var x1 _tmp\nnext\tlast";
+    var lex = Lexer.init(input);
+
+    try run_test(&[_]Test{
+        .{ .expectedType = .IDENT, .expectedLiteral = "my_var" },
+        .{ .expectedType = .IDENT, .expectedLiteral = "x1" },
+        .{ .expectedType = .IDENT, .expectedLiteral = "_tmp" },
+        .{ .expectedType = .IDENT, .expectedLiteral = "next" },
+        .{ .expectedType = .IDENT, .expectedLiteral = "last" },
+        .{ .expectedType = .EOF, .expectedLiteral = "" },
+    }, &lex);
+}
+
+test "UnterminatedStringIsIllegal" {
+    const input = "\"abc";
+    var lex = Lexer.init(input);
+
+    try run_test(&[_]Test{
+        .{ .expectedType = .ILLEGAL, .expectedLiteral = "ILLEGAL" },
+        .{ .expectedType = .EOF, .expectedLiteral = "" },
+    }, &lex);
+}
+
+test "StringEdgeCases" {
+    // Strings have no escape sequences: a backslash is kept as-is.
+    const input = "\"\" \"a\\nb\" \"a b\"";
+    var lex = Lexer.init(input);
+
+    try run_test(&[_]Test{
+        .{ .expectedType = .STRING, .expectedLiteral = "" },
+        .{ .expectedType = .STRING, .expectedLiteral = "a\\nb" },
+        .{ .expectedType = .STRING, .expectedLiteral = "a b" },
+        .{ .expectedType = .EOF, .expectedLiteral = "" },
+    }, &lex);
+}
+
+test "IllegalCharactersAndRepeatedEOF" {
+    const input = "@ é";
+    var lex = Lexer.init(input);
+
+    try run_test(&[_]Test{
+        .{ .expectedType = .ILLEGAL, .expectedLiteral = "ILLEGAL" },
+        // 'é' is two UTF-8 bytes, each lexed as its own ILLEGAL token.
+        .{ .expectedType = .ILLEGAL, .expectedLiteral = "ILLEGAL" },
+        .{ .expectedType = .ILLEGAL, .expectedLiteral = "ILLEGAL" },
+        .{ .expectedType = .EOF, .expectedLiteral = "" },
+        .{ .expectedType = .EOF, .expectedLiteral = "" },
+    }, &lex);
+}
+
 fn run_test(expectedTokens: []const Test, lex: *Lexer) !void {
     for (expectedTokens) |tc| {
         const tok = lex.nextToken();
